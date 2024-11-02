@@ -14,6 +14,9 @@ using namespace std;
 void correlate(int ny, int nx, const float *data, float *result)
 {
   vector<double> normal(nx * ny);
+  vector<double> normal_square_sums(ny, 0.0);
+
+#pragma omp parallel for
   for (int y = 0; y < ny; y++)
   {
     double sum = 0.0;
@@ -30,33 +33,27 @@ void correlate(int ny, int nx, const float *data, float *result)
       normal[y * nx + x] = normalized;
       pow_sum += pow(normalized, 2);
     }
-
-    double factor = sqrt(pow_sum);
-    for (int x = 0; x < nx; x++)
-    {
-      normal[y * nx + x] /= factor;
-    }
+    normal_square_sums[y] = sqrt(pow_sum);
   }
 
-  vector<double> trans(nx * ny);
-  for (int y = 0; y < ny; y++)
+// Calculate Pearson's correlation coefficient between all rows
+#pragma omp parallel for
+  for (int j = 0; j < ny; j++)
   {
-    for (int x = 0; x < nx; x++)
+    for (int i = j; i < ny; i++)
     {
-      trans[x * ny + y] = normal[y * nx + x];
-    }
-  }
-
-  for (int y = 0; y < ny; y++)
-  {
-    for (int x = 0; x < ny; x++)
-    {
-      double sum = 0.0;
-      for (int k = 0; k < nx; k++)
+      // Top part of formula
+      double top_sum = 0.0;
+      for (int x = 0; x < nx; x++)
       {
-        sum += normal[y * nx + k] * trans[k * ny + x];
+        double x0 = normal[i * nx + x];
+        double x1 = normal[j * nx + x];
+
+        top_sum += x0 * x1;
       }
-      result[y * ny + x] = sum;
+
+      double r = top_sum / (normal_square_sums[i] * normal_square_sums[j]);
+      result[i + j * ny] = (float)r;
     }
   }
 }
