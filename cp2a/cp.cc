@@ -15,7 +15,6 @@ void correlate(int ny, int nx, const float *data, float *result)
 {
   vector<double> normal(nx * ny);
   vector<double> normal_square_sums(ny, 0.0);
-
   for (int y = 0; y < ny; y++)
   {
     double sum = 0.0;
@@ -32,27 +31,37 @@ void correlate(int ny, int nx, const float *data, float *result)
       normal[y * nx + x] = normalized;
       pow_sum += pow(normalized, 2);
     }
+
     normal_square_sums[y] = sqrt(pow_sum);
   }
 
-  // Calculate Pearson's correlation coefficient between all rows
-  for (int j = 0; j < ny; j++)
+  vector<double> trans(nx * ny);
+  for (int y = 0; y < ny; y++)
   {
-    for (int i = j; i < ny; i++)
+    for (int x = 0; x < nx; x++)
     {
-      // Top part of formula
-      double top_sum = 0.0;
+      trans[x * ny + y] = normal[y * nx + x];
+    }
+  }
 
-      for (int x = 0; x < nx; x++)
+  vector<double> mult(ny * ny);
+  for (int y = 0; y < ny; y++)
+  {
+    for (int x = 0; x < ny; x++)
+    {
+      for (int k = 0; k < nx; ++k)
       {
-        double x0 = normal[i * nx + x];
-        double x1 = normal[j * nx + x];
-
-        top_sum += x0 * x1;
+        mult[y * ny + x] += normal[y * nx + k] * trans[k * ny + x];
       }
+    }
+  }
 
-      double r = top_sum / (normal_square_sums[i] * normal_square_sums[j]);
-      result[i + j * ny] = (float)r;
+  for (int y = 0; y < ny; y++)
+  {
+    for (int x = 0; x < ny; x++)
+    {
+      double norm_product = normal_square_sums[x] * normal_square_sums[y];
+      result[y * ny + x] = mult[y * ny + x] / norm_product;
     }
   }
 }
