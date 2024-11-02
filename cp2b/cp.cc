@@ -36,22 +36,44 @@ void correlate(int ny, int nx, const float *data, float *result)
     normal_square_sums[y] = sqrt(pow_sum);
   }
 
+  // Apply padding to make matrix width a multiple of 'slices'
+  constexpr int slices = 4;
+  int parts = (nx + slices - 1) / slices;
+  int nxp = parts * slices;
+
+  vector<double> padded(nxp * ny);
+#pragma omp parallel for
+  for (int y = 0; y < ny; y++)
+  {
+    for (int x = 0; x < nxp; x++)
+    {
+      if (x < nx)
+      {
+        padded[y * nxp + x] = normal[y * nx + x];
+      }
+      else
+      {
+        padded[y * nxp + x] = 0.0;
+      }
+    }
+  }
+
 // Calculate Pearson's correlation coefficient between all rows
 #pragma omp parallel for
   for (int j = 0; j < ny; j++)
   {
     for (int i = j; i < ny; i++)
     {
-      double top_sum = 0.0;
-      for (int x = 0; x < nx; x++)
+      vector<double> sums(slices, 0.0);
+      for (int k = 0; k < nxp / slices; k++)
       {
-        double x0 = normal[i * nx + x];
-        double x1 = normal[j * nx + x];
-
-        top_sum += x0 * x1;
+        for (int s = 0; s < slices; s++)
+        {
+          sums[s] += padded[i * nxp + (k * slices) + s] * padded[j * nxp + (k * slices) + s];
+        }
       }
 
-      double r = top_sum / (normal_square_sums[i] * normal_square_sums[j]);
+      double r = ((sums[0] + sums[1]) + (sums[2] + sums[3])) / (normal_square_sums[i] * normal_square_sums[j]);
       result[i + j * ny] = (float)r;
     }
   }
