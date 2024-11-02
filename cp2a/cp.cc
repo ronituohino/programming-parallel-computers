@@ -13,6 +13,7 @@ using namespace std;
 
 void correlate(int ny, int nx, const float *data, float *result)
 {
+  // Apply normalization
   vector<double> normal(nx * ny);
   for (int y = 0; y < ny; y++)
   {
@@ -38,15 +39,28 @@ void correlate(int ny, int nx, const float *data, float *result)
     }
   }
 
-  vector<double> trans(nx * ny);
+  // Apply padding to make matrix width a multiple of 'slices'
+  constexpr int slices = 4;
+  int parts = (nx + slices - 1) / slices;
+  int nxp = parts * slices;
+
+  vector<double> padded(nxp * ny);
   for (int y = 0; y < ny; y++)
   {
-    for (int x = 0; x < nx; x++)
+    for (int x = 0; x < nxp; x++)
     {
-      trans[x * ny + y] = normal[y * nx + x];
+      if (x < nx)
+      {
+        padded[y * nxp + x] = normal[y * nx + x];
+      }
+      else
+      {
+        padded[y * nxp + x] = 0.0;
+      }
     }
   }
 
+  vector<double> sums;
   for (int y = 0; y < ny; y++)
   {
     for (int x = 0; x < ny; x++)
@@ -54,7 +68,7 @@ void correlate(int ny, int nx, const float *data, float *result)
       double sum = 0.0;
       for (int k = 0; k < nx; k++)
       {
-        sum += normal[y * nx + k] * trans[k * ny + x];
+        sum += normal[y * nx + k] * normal[x * nx + k];
       }
       result[y * ny + x] = sum;
     }
