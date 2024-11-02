@@ -13,8 +13,9 @@ using namespace std;
 
 void correlate(int ny, int nx, const float *data, float *result)
 {
-  // Apply normalization
   vector<double> normal(nx * ny);
+  vector<double> normal_square_sums(ny, 0.0);
+
   for (int y = 0; y < ny; y++)
   {
     double sum = 0.0;
@@ -31,12 +32,7 @@ void correlate(int ny, int nx, const float *data, float *result)
       normal[y * nx + x] = normalized;
       pow_sum += pow(normalized, 2);
     }
-
-    double factor = sqrt(pow_sum);
-    for (int x = 0; x < nx; x++)
-    {
-      normal[y * nx + x] /= factor;
-    }
+    normal_square_sums[y] = sqrt(pow_sum);
   }
 
   // Apply padding to make matrix width a multiple of 'slices'
@@ -60,20 +56,23 @@ void correlate(int ny, int nx, const float *data, float *result)
     }
   }
 
+  // Calculate Pearson's correlation coefficient between all rows
   vector<double> sums;
-  for (int y = 0; y < ny; y++)
+  for (int j = 0; j < ny; j++)
   {
-    for (int x = 0; x < ny; x++)
+    for (int i = j; i < ny; i++)
     {
       sums.assign(slices, 0.0);
       for (int k = 0; k < nxp / slices; k++)
       {
         for (int s = 0; s < slices; s++)
         {
-          sums[s] += padded[y * nxp + (k * slices) + s] * padded[x * nxp + (k * slices) + s];
+          sums[s] += padded[i * nxp + (k * slices) + s] * padded[j * nxp + (k * slices) + s];
         }
       }
-      result[y * ny + x] = (sums[0] + sums[1]) + (sums[2] + sums[3]);
+
+      double r = ((sums[0] + sums[1]) + (sums[2] + sums[3])) / (normal_square_sums[i] * normal_square_sums[j]);
+      result[i + j * ny] = (float)r;
     }
   }
 }
