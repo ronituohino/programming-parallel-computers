@@ -65,12 +65,15 @@ void correlate(int ny, int nx, const float *data, float *result)
   {
     for (int x = 0; x < ny; x++)
     {
-      double sum = 0.0;
-      for (int k = 0; k < nx; k++)
+      sums.assign(slices, 0.0);
+      for (int k = 0; k < nxp / slices; k++)
       {
-        sum += normal[y * nx + k] * normal[x * nx + k];
+        for (int s = 0; s < slices; s++)
+        {
+          sums[s] += padded[y * nxp + (k * slices) + s] * padded[x * nxp + (k * slices) + s];
+        }
       }
-      result[y * ny + x] = sum;
+      result[y * ny + x] = (sums[0] + sums[1]) + (sums[2] + sums[3]);
     }
   }
 }
