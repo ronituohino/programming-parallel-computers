@@ -42,7 +42,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   // Apply padding to make matrix width a multiple of 'slice_len'
   constexpr int vector_size = 4;
   // slice_len has to be a multiple of vector_size
-  constexpr int slice_len = 16;
+  constexpr int slice_len = 64;
 
   int vectors_per_slice = slice_len / vector_size;
 
@@ -90,20 +90,30 @@ void correlate(int ny, int nx, const float *data, float *result)
 #pragma omp parallel for
   for (int j = 0; j < ny; j++)
   {
-    for (int i = j; i < ny; i++)
+    for (int i = ny - 1; i > j; i--)
     {
-      vector<double4_t> sums(vector_size);
+      vector<double4_t> sums(vectors_per_slice);
       for (int p = 0; p < parts; p++)
       {
-        for (int v = 0; v < vector_size; v++)
+        for (int v = 0; v < vectors_per_slice; v++)
         {
           sums[v] += vectorized[i * vectors_per_row + p * vectors_per_slice + v] * vectorized[j * vectors_per_row + p * vectors_per_slice + v];
         }
       }
 
-      double4_t sum = (sums[0] + sums[1]) + (sums[2] + sums[3]);
+      double4_t sum = {0.0, 0.0, 0.0, 0.0};
+      for (int v = 0; v < vectors_per_slice; v++)
+      {
+        sum += sums[v];
+      }
       double r = ((sum[0] + sum[1]) + (sum[2] + sum[3])) / (normal_square_sums[i] * normal_square_sums[j]);
       result[i + j * ny] = (float)r;
     }
+  }
+
+#pragma omp parallel for
+  for (int n = 0; n < ny; n++)
+  {
+    result[n + n * ny] = 1.0;
   }
 }
