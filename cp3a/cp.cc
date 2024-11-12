@@ -9,10 +9,18 @@ This is the function you need to implement. Quick reference:
 #include <cmath>
 #include <vector>
 #include <iostream>
+#include <x86intrin.h>
 
 using namespace std;
 
 typedef double double4_t __attribute__((vector_size(4 * sizeof(double))));
+
+static inline double4_t swap1(double4_t x) { return _mm256_permute_pd(x, 0b0101); }
+static inline double4_t swap2(double4_t x)
+{
+  double4_t p = _mm256_permute_pd(x, 0b1010);
+  return _mm256_permute2f128_pd(p, p, 0b00000001);
+}
 
 void correlate(int ny, int nx, const float *data, float *result)
 {
@@ -38,43 +46,39 @@ void correlate(int ny, int nx, const float *data, float *result)
     inv_normal_square_sums[y] = 1.0 / sqrt(pow_sum);
   }
 
-  // Apply padding to make matrix width a multiple of 'x_slices'
-  constexpr int x_slices = 4;
-  int x_parts = (nx + x_slices - 1) / x_slices;
-  int nxp = x_parts * x_slices;
-
   // Apply padding to make matrix height a multiple of 'y_slices'
-  constexpr int y_slices = 3;
+  constexpr int y_slices = 4;
   int y_parts = (ny + y_slices - 1) / y_slices;
   int nyp = y_parts * y_slices;
 
-  vector<double> padded(nxp * nyp);
+  vector<double> padded(nx * nyp);
 #pragma omp parallel for
   for (int y = 0; y < nyp; y++)
   {
-    for (int x = 0; x < nxp; x++)
+    for (int x = 0; x < nx; x++)
     {
-      if (x < nx && y < ny)
+      if (y < ny)
       {
-        padded[y * nxp + x] = normal[y * nx + x];
+        padded[y * nx + x] = normal[y * nx + x];
       }
       else
       {
-        padded[y * nxp + x] = 0.0;
+        padded[y * nx + x] = 0.0;
       }
     }
   }
 
   // Vectorize matrix
-  vector<double4_t> v(nyp * x_parts);
+  vector<double4_t> v(nx * y_parts);
 #pragma omp parallel for
-  for (int y = 0; y < nyp; y++)
+
+  for (int y = 0; y < y_parts; y++)
   {
-    for (int p = 0; p < x_parts; p++)
+    for (int x = 0; x < nx; x++)
     {
-      for (int s = 0; s < x_slices; s++)
+      for (int s = 0; s < y_slices; s++)
       {
-        v[y * x_parts + p][s] = padded[y * nxp + p * x_slices + s];
+        v[y * nx + x][s] = padded[y * nx * y_slices + x * y_slices + s];
       }
     }
   }
@@ -87,10 +91,10 @@ void correlate(int ny, int nx, const float *data, float *result)
     {
       int y_sp = pow(y_slices, 2);
       vector<double4_t> sums(y_sp);
-      int ia = i * y_slices;
-      int ja = j * y_slices;
+      int ia = i * nx;
+      int ja = j * nx;
 
-      for (int p = 0; p < x_parts; p++)
+      for (int x = 0; x < nx; x++)
       {
         for (int n = 0; n < y_sp; n++)
         {
@@ -99,7 +103,7 @@ void correlate(int ny, int nx, const float *data, float *result)
 
           if (ix < ny && jx < ny)
           {
-            sums[n] += v[ix * x_parts + p] * v[jx * x_parts + p];
+            sums[n] += v[ix * nx + x] * v[jx * nx + x];
           }
         }
       }
