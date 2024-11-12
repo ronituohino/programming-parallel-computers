@@ -17,8 +17,7 @@ typedef double double4_t __attribute__((vector_size(4 * sizeof(double))));
 void correlate(int ny, int nx, const float *data, float *result)
 {
   vector<double> normal(nx * ny);
-  vector<double> normal_square_sums(ny, 0.0);
-
+  vector<double> inv_normal_square_sums(ny, 0.0);
 #pragma omp parallel for
   for (int y = 0; y < ny; y++)
   {
@@ -36,29 +35,26 @@ void correlate(int ny, int nx, const float *data, float *result)
       normal[y * nx + x] = normalized;
       pow_sum += pow(normalized, 2);
     }
-    normal_square_sums[y] = sqrt(pow_sum);
+    inv_normal_square_sums[y] = 1.0 / sqrt(pow_sum);
   }
 
-  // Apply padding to make matrix width a multiple of 'slice_len'
-  constexpr int vector_size = 4;
-  // slice_len has to be a multiple of vector_size
-  constexpr int slice_len = 64;
+  // Apply padding to make matrix width a multiple of 'x_slices'
+  constexpr int x_slices = 4;
+  int x_parts = (nx + x_slices - 1) / x_slices;
+  int nxp = x_parts * x_slices;
 
-  int vectors_per_slice = slice_len / vector_size;
+  // Apply padding to make matrix height a multiple of 'y_slices'
+  constexpr int y_slices = 3;
+  int y_parts = (ny + y_slices - 1) / y_slices;
+  int nyp = y_parts * y_slices;
 
-  // parts is the amount of slices per row
-  int parts = (nx + slice_len - 1) / slice_len;
-  int nxp = parts * slice_len;
-
-  int vectors_per_row = parts * vectors_per_slice;
-
-  vector<double> padded(nxp * ny);
+  vector<double> padded(nxp * nyp);
 #pragma omp parallel for
-  for (int y = 0; y < ny; y++)
+  for (int y = 0; y < nyp; y++)
   {
     for (int x = 0; x < nxp; x++)
     {
-      if (x < nx)
+      if (x < nx && y < ny)
       {
         padded[y * nxp + x] = normal[y * nx + x];
       }
@@ -70,50 +66,56 @@ void correlate(int ny, int nx, const float *data, float *result)
   }
 
   // Vectorize matrix
-  vector<double4_t> vectorized(ny * parts * vectors_per_slice);
+  vector<double4_t> v(nyp * x_parts);
 #pragma omp parallel for
-  for (int y = 0; y < ny; y++)
+  for (int y = 0; y < nyp; y++)
   {
-    for (int p = 0; p < parts; p++)
+    for (int p = 0; p < x_parts; p++)
     {
-      for (int s = 0; s < slice_len / vector_size; s++)
+      for (int s = 0; s < x_slices; s++)
       {
-        for (int v = 0; v < vector_size; v++)
-        {
-          vectorized[y * vectors_per_row + p * vectors_per_slice + s][v] = padded[y * nxp + p * slice_len + (s * vector_size + v)];
-        }
+        v[y * x_parts + p][s] = padded[y * nxp + p * x_slices + s];
       }
     }
   }
 
 // Calculate Pearson's correlation coefficient between all rows
 #pragma omp parallel for
-  for (int j = 0; j < ny; j++)
+  for (int j = 0; j < y_parts; j++)
   {
-    for (int i = ny - 1; i > j; i--)
+    for (int i = j; i < y_parts; i++)
     {
-      vector<double4_t> sums(vectors_per_slice);
-      for (int p = 0; p < parts; p++)
+      int y_sp = pow(y_slices, 2);
+      vector<double4_t> sums(y_sp);
+      int ia = i * y_slices;
+      int ja = j * y_slices;
+
+      for (int p = 0; p < x_parts; p++)
       {
-        for (int v = 0; v < vectors_per_slice; v++)
+        for (int n = 0; n < y_sp; n++)
         {
-          sums[v] += vectorized[i * vectors_per_row + p * vectors_per_slice + v] * vectorized[j * vectors_per_row + p * vectors_per_slice + v];
+          int ix = ia + n / y_slices; // 0, 0, 0, 1, 1, 1 ...
+          int jx = ja + n % y_slices; // 0, 1, 2, 0, 1, 2 ...
+
+          if (ix < ny && jx < ny)
+          {
+            sums[n] += v[ix * x_parts + p] * v[jx * x_parts + p];
+          }
         }
       }
 
-      double4_t sum = {0.0, 0.0, 0.0, 0.0};
-      for (int v = 0; v < vectors_per_slice; v++)
+      for (int n = 0; n < y_sp; n++)
       {
-        sum += sums[v];
-      }
-      double r = ((sum[0] + sum[1]) + (sum[2] + sum[3])) / (normal_square_sums[i] * normal_square_sums[j]);
-      result[i + j * ny] = (float)r;
-    }
-  }
+        int ix = ia + n / y_slices;
+        int jx = ja + n % y_slices;
 
-#pragma omp parallel for
-  for (int n = 0; n < ny; n++)
-  {
-    result[n + n * ny] = 1.0;
+        if (ix < ny && jx < ny)
+        {
+          double4_t s = sums[n];
+          double r = ((s[0] + s[1]) + (s[2] + s[3])) * (inv_normal_square_sums[ix] * inv_normal_square_sums[jx]);
+          result[ix + jx * ny] = r;
+        }
+      }
+    }
   }
 }
