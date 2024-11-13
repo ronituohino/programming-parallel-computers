@@ -21,31 +21,69 @@ void pr(double4_t v)
 
 int main()
 {
-  double4_t v1 = double4_t{1.0, 2.0, 3.0, 4.0};
-  double4_t v2 = double4_t{5.0, 6.0, 7.0, 8.0};
+  double4_t a0 = double4_t{1.0, 2.0, 3.0, 4.0};
+  double4_t b0 = double4_t{5.0, 6.0, 7.0, 8.0};
 
-  pr(v1);
-  double4_t v1_1 = swap1(v1);
-  pr(v1_1);
+  pr(a0);
+  double4_t a1 = swap1(a0);
+  pr(a1);
+  double4_t a2 = swap2(a0);
+  pr(a2);
 
-  double4_t v1_2 = swap2(v1);
-  pr(v1_2);
-  pr(v2);
-  double4_t v2_1 = swap1(v2);
-  pr(v2_1);
-  double4_t v2_2 = swap2(v2);
-  pr(v2_2);
+  pr(b0);
+  double4_t b1 = swap1(b0);
+  pr(b1);
+  double4_t b2 = swap2(b0);
+  pr(b2);
 
-  double4_t vv00 = v1 + v2;
-  double4_t vv11 = v1_1 + v2_1;
-  double4_t vv10 = v1_1 + v2;
-  double4_t vv01 = v1 + v2_1;
+  double4_t ab00 = a0 * b0;
+  double4_t ab01 = a0 * b1;
+  double4_t ab12 = a1 * b2;
+  double4_t ab20 = a2 * b0;
+
+  double4_t a01 = a0 * a1;
+  double4_t a02 = a0 * a2;
+  double4_t a12 = a1 * a2;
+
+  double4_t b01 = b0 * b1;
+  double4_t b02 = b0 * b2;
+  double4_t b12 = b1 * b2;
+
   cout << endl;
-  pr(vv00);
-  pr(vv11);
-  pr(vv10);
-  pr(vv01);
 
-  double res[28] = {1.0, 2.0};
-  cout << res[0];
+  double res[28] = {
+      a01[0],
+      a02[0],
+      a12[2],
+      ab00[0],
+      ab01[0],
+      ab20[2],
+      ab12[1],
+      a12[0],
+      a02[1],
+      ab01[1],
+      ab00[1],
+      ab12[0],
+      ab20[3],
+      a01[2],
+      ab20[0],
+      ab12[3],
+      ab00[2],
+      ab01[2],
+      ab12[2],
+      ab20[1],
+      ab01[3],
+      ab00[3],
+      b01[0],
+      b02[0],
+      b12[1],
+      b12[0],
+      b02[1],
+      b01[2],
+  };
+
+  for (int i = 0; i < 28; i++)
+  {
+    cout << res[i] << endl;
+  }
 }
