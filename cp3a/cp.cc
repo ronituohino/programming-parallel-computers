@@ -24,8 +24,13 @@ static inline double4_t swap2(double4_t x)
 
 void correlate(int ny, int nx, const float *data, float *result)
 {
+  // Padding to make result matrix height a multiple of 'y_slices'
+  constexpr int y_slices = 4;
+  int y_parts = (ny + y_slices - 1) / y_slices;
+  int nyp = y_parts * y_slices;
+
   vector<double> normal(nx * ny);
-  vector<double> inv_normal_square_sums(ny, 0.0);
+  vector<double> inv_nss(nyp, 0.0);
 #pragma omp parallel for
   for (int y = 0; y < ny; y++)
   {
@@ -43,13 +48,26 @@ void correlate(int ny, int nx, const float *data, float *result)
       normal[y * nx + x] = normalized;
       pow_sum += pow(normalized, 2);
     }
-    inv_normal_square_sums[y] = 1.0 / sqrt(pow_sum);
+    inv_nss[y] = 1.0 / sqrt(pow_sum);
   }
 
-  // Apply padding to make matrix height a multiple of 'y_slices'
-  constexpr int y_slices = 4;
-  int y_parts = (ny + y_slices - 1) / y_slices;
-  int nyp = y_parts * y_slices;
+  // For small input, give result in a naive way
+  if (y_parts < 2)
+  {
+    for (int i = 0; i < ny; i++)
+    {
+      for (int j = i; j < ny; j++)
+      {
+        double sum = 0.0;
+        for (int x = 0; x < nx; x++)
+        {
+          sum += normal[i * nx + x] * normal[j * nx + x];
+        }
+        result[j + i * ny] = (float)(sum * (inv_nss[i] * inv_nss[j]));
+      }
+    }
+    return;
+  }
 
   vector<double> padded(nx * nyp);
 #pragma omp parallel for
@@ -83,11 +101,12 @@ void correlate(int ny, int nx, const float *data, float *result)
     }
   }
 
-// Calculate Pearson's correlation coefficient between all rows
+  // Calculate Pearson's correlation coefficient between all rows
+  vector<double> temp(nyp * nyp);
 #pragma omp parallel for
-  for (int j = 0; j < y_parts; j++)
+  for (int i = 0; i < y_parts - 1; i++)
   {
-    for (int i = j; i < y_parts; i++)
+    for (int j = i + 1; j < y_parts; j++)
     {
       double sums[28];
 
@@ -145,32 +164,64 @@ void correlate(int ny, int nx, const float *data, float *result)
         sums[27] += b01[2];
       }
 
-      for (int k = 0; k < 7; k++)
-      {
-        for (int l = k + 1; l < 8; l++)
-        {
-          int n = (k * (15 - k)) / 2 + (l - k - 1); // 0, 1, 2, ... 27
+      int is = i * y_slices;
+      int js = j * y_slices;
 
-          int ax = (k < 4 ? k + i * y_parts : k + j * y_parts - 4);
-          int bx = (l < 4 ? l + i * y_parts : l + j * y_parts - 4);
+      // Top left of top right triangle
+      temp[is + 1 + is * ny] = sums[0] * (inv_nss[is] * inv_nss[is + 1]);
+      temp[is + 2 + is * ny] = sums[1] * (inv_nss[is] * inv_nss[is + 2]);
+      temp[is + 3 + is * ny] = sums[2] * (inv_nss[is] * inv_nss[is + 3]);
 
-          if (ax < ny && bx < ny)
-          {
-            if (ny == 5 && nx == 2)
-            {
-              cout << n << "<-n ax->" << ax << endl;
-              cout << n << "<-n bx->" << bx << endl;
-            }
-            double r = sums[n] * (inv_normal_square_sums[ax] * inv_normal_square_sums[bx]);
-            result[ax + bx * ny] = (float)r;
-          }
-        }
-      }
+      temp[is + 2 + (is + 1) * ny] = sums[7] * (inv_nss[is + 1] * inv_nss[is + 2]);
+      temp[is + 3 + (is + 1) * ny] = sums[8] * (inv_nss[is + 1] * inv_nss[is + 3]);
+
+      temp[is + 3 + (i + 2) * ny] = sums[13] * (inv_nss[i + 2] * inv_nss[i + 3]);
+
+      // Cross results
+      temp[js + 0 + is * ny] = sums[3] * (inv_nss[is] * inv_nss[js + 0]);
+      temp[js + 1 + is * ny] = sums[4] * (inv_nss[is] * inv_nss[js + 1]);
+      temp[js + 2 + is * ny] = sums[5] * (inv_nss[is] * inv_nss[js + 2]);
+      temp[js + 3 + is * ny] = sums[6] * (inv_nss[is] * inv_nss[js + 3]);
+
+      temp[js + 0 + (is + 1) * ny] = sums[9] * (inv_nss[is + 1] * inv_nss[js + 0]);
+      temp[js + 1 + (is + 1) * ny] = sums[10] * (inv_nss[is + 1] * inv_nss[js + 1]);
+      temp[js + 2 + (is + 1) * ny] = sums[11] * (inv_nss[is + 1] * inv_nss[js + 2]);
+      temp[js + 3 + (is + 1) * ny] = sums[12] * (inv_nss[is + 1] * inv_nss[js + 3]);
+
+      temp[js + 0 + (is + 2) * ny] = sums[14] * (inv_nss[is + 2] * inv_nss[js + 0]);
+      temp[js + 1 + (is + 2) * ny] = sums[15] * (inv_nss[is + 2] * inv_nss[js + 1]);
+      temp[js + 2 + (is + 2) * ny] = sums[16] * (inv_nss[is + 2] * inv_nss[js + 2]);
+      temp[js + 3 + (is + 2) * ny] = sums[17] * (inv_nss[is + 2] * inv_nss[js + 3]);
+
+      temp[js + 0 + (is + 3) * ny] = sums[18] * (inv_nss[is + 3] * inv_nss[js + 0]);
+      temp[js + 1 + (is + 3) * ny] = sums[19] * (inv_nss[is + 3] * inv_nss[js + 1]);
+      temp[js + 2 + (is + 3) * ny] = sums[20] * (inv_nss[is + 3] * inv_nss[js + 2]);
+      temp[js + 3 + (is + 3) * ny] = sums[21] * (inv_nss[is + 3] * inv_nss[js + 3]);
+
+      // Bottom right of top right triangle
+      temp[js + 1 + js * ny] = sums[22] * (inv_nss[js] * inv_nss[js + 1]);
+      temp[js + 2 + js * ny] = sums[23] * (inv_nss[js] * inv_nss[js + 2]);
+      temp[js + 3 + js * ny] = sums[24] * (inv_nss[js] * inv_nss[js + 3]);
+
+      temp[js + 2 + (js + 1) * ny] = sums[25] * (inv_nss[js + 1] * inv_nss[js + 2]);
+      temp[js + 3 + (js + 1) * ny] = sums[26] * (inv_nss[js + 1] * inv_nss[js + 3]);
+
+      temp[js + 3 + (js + 2) * ny] = sums[27] * (inv_nss[js + 2] * inv_nss[js + 3]);
     }
   }
 
-  for (int n = 0; n < ny; n++)
+  for (int i = 0; i < ny; i++)
   {
-    result[n + n * ny] = 1.0;
+    for (int j = 0; j < ny; j++)
+    {
+      if (i == j)
+      {
+        result[j + i * ny] = 1.0;
+      }
+      else
+      {
+        result[j + i * ny] = (float)temp[j + i * nyp];
+      }
+    }
   }
 }
