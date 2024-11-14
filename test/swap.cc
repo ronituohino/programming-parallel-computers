@@ -51,39 +51,52 @@ int main()
 
   cout << endl;
 
-  double res[28] = {
-      a01[0],
-      a02[0],
-      a12[2],
-      ab00[0],
-      ab01[0],
-      ab20[2],
-      ab12[1],
-      a12[0],
-      a02[1],
-      ab01[1],
-      ab00[1],
-      ab12[0],
-      ab20[3],
-      a01[2],
-      ab20[0],
-      ab12[3],
-      ab00[2],
-      ab01[2],
-      ab12[2],
-      ab20[1],
-      ab01[3],
-      ab00[3],
-      b01[0],
-      b02[0],
-      b12[1],
-      b12[0],
-      b02[1],
-      b01[2],
-  };
+  double sums[28];
+
+  sums[0] += a01[0];
+  sums[1] += a02[0];
+  sums[2] += a12[2];
+  sums[3] += ab00[0];
+  sums[4] += ab01[0];
+  sums[5] += ab20[2];
+  sums[6] += ab12[1];
+  sums[7] += a12[0];
+  sums[8] += a02[1];
+  sums[9] += ab01[1];
+  sums[10] += ab00[1];
+  sums[11] += ab12[0];
+  sums[12] += ab20[3];
+  sums[13] += a01[2];
+  sums[14] += ab20[0];
+  sums[15] += ab12[3];
+  sums[16] += ab00[2];
+  sums[17] += ab01[2];
+  sums[18] += ab12[2];
+  sums[19] += ab20[1];
+  sums[20] += ab01[3];
+  sums[21] += ab00[3];
+  sums[22] += b01[0];
+  sums[23] += b02[0];
+  sums[24] += b12[1];
+  sums[25] += b12[0];
+  sums[26] += b02[1];
+  sums[27] += b01[2];
 
   for (int i = 0; i < 28; i++)
   {
-    cout << res[i] << endl;
+    cout << sums[i] << endl;
+  }
+
+  cout << endl
+       << endl;
+
+  for (int k = 0; k < 7; k++)
+  {
+    for (int l = k + 1; l < 8; l++)
+    {
+      int n = (k * (15 - k)) / 2 + (l - k - 1);
+      cout << n << endl;
+    }
+    cout << endl;
   }
 }

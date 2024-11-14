@@ -78,7 +78,7 @@ void correlate(int ny, int nx, const float *data, float *result)
     {
       for (int s = 0; s < y_slices; s++)
       {
-        v[y * nx + x][s] = padded[y * nx * y_slices + x * y_slices + s];
+        v[y * nx + x][s] = padded[y * nx * y_slices + x + s * nx];
       }
     }
   }
@@ -89,37 +89,88 @@ void correlate(int ny, int nx, const float *data, float *result)
   {
     for (int i = j; i < y_parts; i++)
     {
-      int y_sp = pow(y_slices, 2);
-      vector<double4_t> sums(y_sp);
-      int ia = i * nx;
-      int ja = j * nx;
+      double sums[28];
 
       for (int x = 0; x < nx; x++)
       {
-        for (int n = 0; n < y_sp; n++)
-        {
-          int ix = ia + n / y_slices; // 0, 0, 0, 1, 1, 1 ...
-          int jx = ja + n % y_slices; // 0, 1, 2, 0, 1, 2 ...
+        double4_t a0 = v[i * nx + x];
+        double4_t b0 = v[j * nx + x];
 
-          if (ix < ny && jx < ny)
+        double4_t a1 = swap1(a0);
+        double4_t a2 = swap2(a0);
+
+        double4_t b1 = swap1(b0);
+        double4_t b2 = swap2(b0);
+
+        double4_t ab00 = a0 * b0;
+        double4_t ab01 = a0 * b1;
+        double4_t ab12 = a1 * b2;
+        double4_t ab20 = a2 * b0;
+
+        double4_t a01 = a0 * a1;
+        double4_t a02 = a0 * a2;
+        double4_t a12 = a1 * a2;
+
+        double4_t b01 = b0 * b1;
+        double4_t b02 = b0 * b2;
+        double4_t b12 = b1 * b2;
+
+        sums[0] += a01[0];
+        sums[1] += a02[0];
+        sums[2] += a12[2];
+        sums[3] += ab00[0];
+        sums[4] += ab01[0];
+        sums[5] += ab20[2];
+        sums[6] += ab12[1];
+        sums[7] += a12[0];
+        sums[8] += a02[1];
+        sums[9] += ab01[1];
+        sums[10] += ab00[1];
+        sums[11] += ab12[0];
+        sums[12] += ab20[3];
+        sums[13] += a01[2];
+        sums[14] += ab20[0];
+        sums[15] += ab12[3];
+        sums[16] += ab00[2];
+        sums[17] += ab01[2];
+        sums[18] += ab12[2];
+        sums[19] += ab20[1];
+        sums[20] += ab01[3];
+        sums[21] += ab00[3];
+        sums[22] += b01[0];
+        sums[23] += b02[0];
+        sums[24] += b12[1];
+        sums[25] += b12[0];
+        sums[26] += b02[1];
+        sums[27] += b01[2];
+      }
+
+      for (int k = 0; k < 7; k++)
+      {
+        for (int l = k + 1; l < 8; l++)
+        {
+          int n = (k * (15 - k)) / 2 + (l - k - 1); // 0, 1, 2, ... 27
+
+          int ax = (k < 4 ? k + i * y_parts : k + j * y_parts - 4);
+          int bx = (l < 4 ? l + i * y_parts : l + j * y_parts - 4);
+
+          if (ax < ny && bx < ny)
           {
-            sums[n] += v[ix * nx + x] * v[jx * nx + x];
+            if (ny == 5 && nx == 2)
+            {
+              cout << n << "<-n ax->" << ax << endl;
+              cout << n << "<-n bx->" << bx << endl;
+            }
+            double r = sums[n] * (inv_normal_square_sums[ax] * inv_normal_square_sums[bx]);
+            result[ax + bx * ny] = (float)r;
           }
         }
       }
-
-      for (int n = 0; n < y_sp; n++)
-      {
-        int ix = ia + n / y_slices;
-        int jx = ja + n % y_slices;
-
-        if (ix < ny && jx < ny)
-        {
-          double4_t s = sums[n];
-          double r = ((s[0] + s[1]) + (s[2] + s[3])) * (inv_normal_square_sums[ix] * inv_normal_square_sums[jx]);
-          result[ix + jx * ny] = r;
-        }
-      }
     }
+  }
+
+  for (int n = 0; n < ny; n++)
+  {
+    result[n + n * ny] = 1.0;
   }
 }
