@@ -3,6 +3,9 @@
 #include <iostream>
 #include <x86intrin.h>
 
+#include <tuple>
+#include <algorithm>
+
 using namespace std;
 
 typedef double double4_t __attribute__((vector_size(4 * sizeof(double))));
@@ -108,5 +111,22 @@ int main()
     int ns = (n < 19 ? n - 16 : (n == 19) ? 1
                                           : 2); // 0, 1, 2, 1, 2, 2
     cout << ns << endl;
+  }
+
+  int y_parts = 16;
+  vector<tuple<int, int, int>> rows(y_parts * y_parts);
+  for (int ia = 0; ia < y_parts; ++ia)
+  {
+    for (int ja = 0; ja < y_parts; ++ja)
+    {
+      int ija = _pdep_u32(ia, 0x55555555) | _pdep_u32(ja, 0xAAAAAAAA);
+      rows[ia * y_parts + ja] = make_tuple(ija, ia, ja);
+    }
+  }
+  sort(rows.begin(), rows.end());
+  for (int n = 0; n < 16; n++)
+  {
+    auto [a, b, c] = rows[n];
+    cout << a << " " << b << " " << c << endl;
   }
 }
