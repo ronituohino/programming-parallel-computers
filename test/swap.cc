@@ -51,38 +51,40 @@ int main()
 
   cout << endl;
 
-  double sums[28];
+  double sums[16];
 
-  sums[0] += a01[0];
-  sums[1] += a02[0];
-  sums[2] += a12[2];
-  sums[3] += ab00[0];
-  sums[4] += ab01[0];
-  sums[5] += ab20[2];
-  sums[6] += ab12[1];
-  sums[7] += a12[0];
-  sums[8] += a02[1];
-  sums[9] += ab01[1];
-  sums[10] += ab00[1];
-  sums[11] += ab12[0];
-  sums[12] += ab20[3];
-  sums[13] += a01[2];
-  sums[14] += ab20[0];
-  sums[15] += ab12[3];
-  sums[16] += ab00[2];
-  sums[17] += ab01[2];
-  sums[18] += ab12[2];
-  sums[19] += ab20[1];
-  sums[20] += ab01[3];
-  sums[21] += ab00[3];
+  // sums[0] += a01[0];
+  // sums[1] += a02[0];
+  // sums[2] += a12[2];
+  sums[0] += ab00[0];
+  sums[1] += ab01[0];
+  sums[2] += ab20[2];
+  sums[3] += ab12[1];
+  // sums[7] += a12[0];
+  // sums[8] += a02[1];
+  sums[4] += ab01[1];
+  sums[5] += ab00[1];
+  sums[6] += ab12[0];
+  sums[7] += ab20[3];
+  // sums[13] += a01[2];
+  sums[8] += ab20[0];
+  sums[9] += ab12[3];
+  sums[10] += ab00[2];
+  sums[11] += ab01[2];
+  sums[12] += ab12[2];
+  sums[13] += ab20[1];
+  sums[14] += ab01[3];
+  sums[15] += ab00[3];
+  /*
   sums[22] += b01[0];
   sums[23] += b02[0];
   sums[24] += b12[1];
   sums[25] += b12[0];
   sums[26] += b02[1];
   sums[27] += b01[2];
+  */
 
-  for (int i = 0; i < 28; i++)
+  for (int i = 0; i < 16; i++)
   {
     cout << sums[i] << endl;
   }
