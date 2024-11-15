@@ -88,7 +88,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   }
 
   // Calculate Pearson's correlation coefficient between all rows
-#pragma omp parallel for
+#pragma omp parallel for collapse(2)
   for (int i = 0; i < y_parts; i++)
   {
     for (int j = i; j < y_parts; j++)
