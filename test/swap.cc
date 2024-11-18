@@ -114,12 +114,24 @@ int main()
   sums[54] += a0b0[6];
   sums[55] += a1b0[7];
 
-  sums[56] += a0b2[6];
-  sums[57] += a1b2[7];
-  sums[58] += a0b1[6];
-  sums[59] += a1b1[7];
-  sums[60] += a0b3[6];
-  sums[61] += a1b3[7];
-  sums[62] += a0b0[6];
-  sums[63] += a1b0[7];
+  sums[56] += a1b2[6];
+  sums[57] += a0b2[7];
+  sums[58] += a1b1[6];
+  sums[59] += a0b1[7];
+  sums[60] += a1b3[6];
+  sums[61] += a0b3[7];
+  sums[62] += a1b0[6];
+  sums[63] += a0b0[7];
+
+  cout << endl;
+  cout << endl;
+
+  for (int n = 0; n < 8; n++)
+  {
+    for (int k = 0; k < 8; k++)
+    {
+      cout << sums[n * 8 + k] << " ";
+    }
+    cout << endl;
+  }
 }

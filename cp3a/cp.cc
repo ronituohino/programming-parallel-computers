@@ -55,7 +55,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   int nyp = y_parts * y_slices;
 
   // Padding to make result matrix width a multiple of 'x_slices'
-  constexpr int x_slices = 5;
+  constexpr int x_slices = 1;
   int x_parts = (nx + x_slices - 1) / x_slices;
   int nxp = x_parts * x_slices;
 
@@ -96,51 +96,116 @@ void correlate(int ny, int nx, const float *data, float *result)
   {
     for (int j = i; j < y_parts; j++)
     {
-      vector<double> sums(x_slices * 16);
+      vector<double> sums(x_slices * 64);
 
       for (int x = 0; x < nxp / x_slices; x++)
       {
         for (int k = 0; k < x_slices; k++)
         {
-          double4_t a0 = v[i * nxp + (x * x_slices + k)];
-          double4_t b0 = v[j * nxp + (x * x_slices + k)];
+          double8_t a0 = v[i * nxp + (x * x_slices + k)];
+          double8_t b0 = v[j * nxp + (x * x_slices + k)];
 
-          double4_t ab00 = a0 * b0;
-          double4_t ab01 = a0 * swap1(b0);
-          double4_t ab12 = swap1(a0) * swap2(b0);
-          double4_t ab20 = swap2(a0) * b0;
+          double8_t a1 = swap1(a0);
+          double8_t b1 = swap4(b0);
+          double8_t b2 = swap2(b1);
+          double8_t b3 = swap2(b0);
 
-          sums[k + 0 * x_slices] += ab00[0];
-          sums[k + 1 * x_slices] += ab01[0];
-          sums[k + 2 * x_slices] += ab20[2];
-          sums[k + 3 * x_slices] += ab12[1];
-          sums[k + 4 * x_slices] += ab01[1];
-          sums[k + 5 * x_slices] += ab00[1];
-          sums[k + 6 * x_slices] += ab12[0];
-          sums[k + 7 * x_slices] += ab20[3];
-          sums[k + 8 * x_slices] += ab20[0];
-          sums[k + 9 * x_slices] += ab12[3];
-          sums[k + 10 * x_slices] += ab00[2];
-          sums[k + 11 * x_slices] += ab01[2];
-          sums[k + 12 * x_slices] += ab12[2];
-          sums[k + 13 * x_slices] += ab20[1];
-          sums[k + 14 * x_slices] += ab01[3];
-          sums[k + 15 * x_slices] += ab00[3];
+          double8_t a0b0 = a0 * b0;
+          double8_t a0b1 = a0 * b1;
+          double8_t a0b2 = a0 * b2;
+          double8_t a0b3 = a0 * b3;
+
+          double8_t a1b0 = a1 * b0;
+          double8_t a1b1 = a1 * b1;
+          double8_t a1b2 = a1 * b2;
+          double8_t a1b3 = a1 * b3;
+
+          sums[k + 0 * x_slices] += a0b0[0];
+          sums[k + 1 * x_slices] += a1b0[1];
+          sums[k + 2 * x_slices] += a0b3[0];
+          sums[k + 3 * x_slices] += a1b3[1];
+          sums[k + 4 * x_slices] += a0b1[0];
+          sums[k + 5 * x_slices] += a1b1[1];
+          sums[k + 6 * x_slices] += a0b2[0];
+          sums[k + 7 * x_slices] += a1b2[1];
+
+          sums[k + 8 * x_slices] += a1b0[0];
+          sums[k + 9 * x_slices] += a0b0[1];
+          sums[k + 10 * x_slices] += a1b3[0];
+          sums[k + 11 * x_slices] += a0b3[1];
+          sums[k + 12 * x_slices] += a1b1[0];
+          sums[k + 13 * x_slices] += a0b1[1];
+          sums[k + 14 * x_slices] += a1b2[0];
+          sums[k + 15 * x_slices] += a0b2[1];
+
+          sums[k + 16 * x_slices] += a0b3[2];
+          sums[k + 17 * x_slices] += a1b3[3];
+          sums[k + 18 * x_slices] += a0b0[2];
+          sums[k + 19 * x_slices] += a1b0[3];
+          sums[k + 20 * x_slices] += a0b2[2];
+          sums[k + 21 * x_slices] += a1b2[3];
+          sums[k + 22 * x_slices] += a0b1[2];
+          sums[k + 23 * x_slices] += a1b1[3];
+
+          sums[k + 24 * x_slices] += a1b3[2];
+          sums[k + 25 * x_slices] += a0b3[3];
+          sums[k + 26 * x_slices] += a1b0[2];
+          sums[k + 27 * x_slices] += a0b0[3];
+          sums[k + 28 * x_slices] += a1b2[2];
+          sums[k + 29 * x_slices] += a0b2[3];
+          sums[k + 30 * x_slices] += a1b1[2];
+          sums[k + 31 * x_slices] += a0b1[3];
+
+          sums[k + 32 * x_slices] += a0b1[4];
+          sums[k + 33 * x_slices] += a1b1[5];
+          sums[k + 34 * x_slices] += a0b2[4];
+          sums[k + 35 * x_slices] += a1b2[5];
+          sums[k + 36 * x_slices] += a0b0[4];
+          sums[k + 37 * x_slices] += a1b0[5];
+          sums[k + 38 * x_slices] += a0b3[4];
+          sums[k + 39 * x_slices] += a1b3[5];
+
+          sums[k + 40 * x_slices] += a1b1[4];
+          sums[k + 41 * x_slices] += a0b1[5];
+          sums[k + 42 * x_slices] += a1b2[4];
+          sums[k + 43 * x_slices] += a0b2[5];
+          sums[k + 44 * x_slices] += a1b0[4];
+          sums[k + 45 * x_slices] += a0b0[5];
+          sums[k + 46 * x_slices] += a1b3[4];
+          sums[k + 47 * x_slices] += a0b3[5];
+
+          sums[k + 48 * x_slices] += a0b2[6];
+          sums[k + 49 * x_slices] += a1b2[7];
+          sums[k + 50 * x_slices] += a0b1[6];
+          sums[k + 51 * x_slices] += a1b1[7];
+          sums[k + 52 * x_slices] += a0b3[6];
+          sums[k + 53 * x_slices] += a1b3[7];
+          sums[k + 54 * x_slices] += a0b0[6];
+          sums[k + 55 * x_slices] += a1b0[7];
+
+          sums[k + 56 * x_slices] += a1b2[6];
+          sums[k + 57 * x_slices] += a0b2[7];
+          sums[k + 58 * x_slices] += a1b1[6];
+          sums[k + 59 * x_slices] += a0b1[7];
+          sums[k + 60 * x_slices] += a1b3[6];
+          sums[k + 61 * x_slices] += a0b3[7];
+          sums[k + 62 * x_slices] += a1b0[6];
+          sums[k + 63 * x_slices] += a0b0[7];
         }
       }
 
       int is = i * y_slices;
       int js = j * y_slices;
 
-      for (int n = 0; n < 16; n++)
+      for (int n = 0; n < 64; n++)
       {
-        int nx = n / 4;
-        int ns = n % 4;
+        int nx = n / 8;
+        int ns = n % 8;
 
         if (js + ns < ny && is + nx < ny)
         {
           int idx = n * x_slices;
-          result[(js + ns) + ((is + nx) * ny)] = (sums[idx + 0] + sums[idx + 1] + sums[idx + 2] + sums[idx + 3] + sums[idx + 4]) * (inv_nss[(is + nx)] * inv_nss[(js + ns)]);
+          result[(js + ns) + ((is + nx) * ny)] = (sums[idx]) * (inv_nss[(is + nx)] * inv_nss[(js + ns)]);
         }
       }
     }
