@@ -10,11 +10,11 @@ typedef double double8_t __attribute__((vector_size(8 * sizeof(double))));
 static inline double8_t swap1(double8_t x) { return _mm512_permute_pd(x, 0b01010101); }
 static inline double8_t swap2(double8_t x)
 {
-  return _mm512_shuffle_f64x2(x, x, 0b01010101);
+  return double8_t{x[2], x[3], x[0], x[1], x[6], x[7], x[4], x[5]};
 }
 static inline double8_t swap4(double8_t x)
 {
-  return _mm512_shuffle_f64x2(_mm512_unpacklo_pd(x, x), _mm512_unpackhi_pd(x, x), 0b01000100);
+  return double8_t{x[4], x[5], x[6], x[7], x[0], x[1], x[2], x[3]};
 }
 
 void pr(double8_t v)
@@ -48,4 +48,78 @@ int main()
   double8_t a1b1 = a1 * b1;
   double8_t a1b2 = a1 * b2;
   double8_t a1b3 = a1 * b3;
+
+  vector<double> sums(64);
+
+  sums[0] += a0b0[0];
+  sums[1] += a1b0[1];
+  sums[2] += a0b3[0];
+  sums[3] += a1b3[1];
+  sums[4] += a0b1[0];
+  sums[5] += a1b1[1];
+  sums[6] += a0b2[0];
+  sums[7] += a1b2[1];
+
+  sums[8] += a1b0[0];
+  sums[9] += a0b0[1];
+  sums[10] += a1b3[0];
+  sums[11] += a0b3[1];
+  sums[12] += a1b1[0];
+  sums[13] += a0b1[1];
+  sums[14] += a1b2[0];
+  sums[15] += a0b2[1];
+
+  sums[16] += a0b3[2];
+  sums[17] += a1b3[3];
+  sums[18] += a0b0[2];
+  sums[19] += a1b0[3];
+  sums[20] += a0b2[2];
+  sums[21] += a1b2[3];
+  sums[22] += a0b1[2];
+  sums[23] += a1b1[3];
+
+  sums[24] += a1b3[2];
+  sums[25] += a0b3[3];
+  sums[26] += a1b0[2];
+  sums[27] += a0b0[3];
+  sums[28] += a1b2[2];
+  sums[29] += a0b2[3];
+  sums[30] += a1b1[2];
+  sums[31] += a0b1[3];
+
+  sums[32] += a0b1[4];
+  sums[33] += a1b1[5];
+  sums[34] += a0b2[4];
+  sums[35] += a1b2[5];
+  sums[36] += a0b0[4];
+  sums[37] += a1b0[5];
+  sums[38] += a0b3[4];
+  sums[39] += a1b3[5];
+
+  sums[40] += a1b1[4];
+  sums[41] += a0b1[5];
+  sums[42] += a1b2[4];
+  sums[43] += a0b2[5];
+  sums[44] += a1b0[4];
+  sums[45] += a0b0[5];
+  sums[46] += a1b3[4];
+  sums[47] += a0b3[5];
+
+  sums[48] += a0b2[6];
+  sums[49] += a1b2[7];
+  sums[50] += a0b1[6];
+  sums[51] += a1b1[7];
+  sums[52] += a0b3[6];
+  sums[53] += a1b3[7];
+  sums[54] += a0b0[6];
+  sums[55] += a1b0[7];
+
+  sums[56] += a0b2[6];
+  sums[57] += a1b2[7];
+  sums[58] += a0b1[6];
+  sums[59] += a1b1[7];
+  sums[60] += a0b3[6];
+  sums[61] += a1b3[7];
+  sums[62] += a0b0[6];
+  sums[63] += a1b0[7];
 }

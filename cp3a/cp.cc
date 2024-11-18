@@ -13,13 +13,16 @@ This is the function you need to implement. Quick reference:
 
 using namespace std;
 
-typedef double double4_t __attribute__((vector_size(4 * sizeof(double))));
+typedef double double8_t __attribute__((vector_size(8 * sizeof(double))));
 
-static inline double4_t swap1(double4_t x) { return _mm256_permute_pd(x, 0b0101); }
-static inline double4_t swap2(double4_t x)
+static inline double8_t swap1(double8_t x) { return _mm512_permute_pd(x, 0b01010101); }
+static inline double8_t swap2(double8_t x)
 {
-  double4_t p = _mm256_permute_pd(x, 0b1010);
-  return _mm256_permute2f128_pd(p, p, 0b00000001);
+  return double8_t{x[2], x[3], x[0], x[1], x[6], x[7], x[4], x[5]};
+}
+static inline double8_t swap4(double8_t x)
+{
+  return double8_t{x[4], x[5], x[6], x[7], x[0], x[1], x[2], x[3]};
 }
 
 void correlate(int ny, int nx, const float *data, float *result)
@@ -47,7 +50,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   }
 
   // Padding to make result matrix height a multiple of 'y_slices'
-  constexpr int y_slices = 4;
+  constexpr int y_slices = 8;
   int y_parts = (ny + y_slices - 1) / y_slices;
   int nyp = y_parts * y_slices;
 
@@ -74,7 +77,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   }
 
   // Vectorize matrix
-  vector<double4_t> v(nxp * y_parts);
+  vector<double8_t> v(nxp * y_parts);
 #pragma omp parallel for
   for (int y = 0; y < y_parts; y++)
   {
