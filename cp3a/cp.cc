@@ -32,9 +32,12 @@ void correlate(int ny, int nx, const float *data, float *result)
 
   // Vectorize matrix
   vector<double4_t> v(nxp * y_parts);
+  vector<double> inv_nss(nyp, 0.0);
 #pragma omp parallel for
   for (int y = 0; y < y_parts; y++)
   {
+    double4_t sum = {0.0, 0.0, 0.0, 0.0};
+
     for (int x = 0; x < nxp; x++)
     {
       for (int s = 0; s < y_slices; s++)
@@ -48,19 +51,10 @@ void correlate(int ny, int nx, const float *data, float *result)
           v[y * nxp + x][s] = 0.0;
         }
       }
-    }
-  }
 
-  vector<double4_t> n(nxp * y_parts);
-  vector<double> inv_nss(nyp, 0.0);
-#pragma omp parallel for
-  for (int y = 0; y < y_parts; y++)
-  {
-    double4_t sum = {0.0, 0.0, 0.0, 0.0};
-    for (int x = 0; x < nx; x++)
-    {
       sum += v[y * nxp + x];
     }
+
     double d = 1.0 / nx;
     double4_t div = {d, d, d, d};
     double4_t mean = sum * div;
@@ -69,7 +63,7 @@ void correlate(int ny, int nx, const float *data, float *result)
     for (int x = 0; x < nx; x++)
     {
       double4_t normalized = v[y * nxp + x] - mean;
-      n[y * nxp + x] = normalized;
+      v[y * nxp + x] = normalized;
       pow_sum += normalized * normalized;
     }
 
@@ -91,8 +85,8 @@ void correlate(int ny, int nx, const float *data, float *result)
       {
         for (int k = 0; k < x_slices; k++)
         {
-          double4_t a0 = n[i * nxp + (x * x_slices + k)];
-          double4_t b0 = n[j * nxp + (x * x_slices + k)];
+          double4_t a0 = v[i * nxp + (x * x_slices + k)];
+          double4_t b0 = v[j * nxp + (x * x_slices + k)];
 
           double4_t a1 = swap1(a0);
           double4_t b1 = swap2(b0);
