@@ -23,6 +23,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   // Padding to make result matrix height a multiple of 'y_slices'
   constexpr int y_slices = 4;
   int y_parts = (ny + y_slices - 1) / y_slices;
+  int nyp = y_parts * y_slices;
 
   // Padding to make result matrix width a multiple of 'x_slices'
   constexpr int x_slices = 6;
@@ -40,7 +41,7 @@ void correlate(int ny, int nx, const float *data, float *result)
       {
         if (y * y_slices + s < ny && x < nx)
         {
-          v[y * nxp + x][s] = data[y * nx * y_slices + x + s * nx];
+          v[y * nxp + x][s] = data[(y * y_slices + s) * nx + x];
         }
         else
         {
@@ -50,25 +51,21 @@ void correlate(int ny, int nx, const float *data, float *result)
     }
   }
 
-  // Fix this and integrate with vectorization
   vector<double4_t> n(nxp * y_parts);
-  vector<double> inv_nss(ny);
+  vector<double> inv_nss(nyp, 0.0);
 #pragma omp parallel for
   for (int y = 0; y < y_parts; y++)
   {
-    double4_t sum;
+    double4_t sum = {0.0, 0.0, 0.0, 0.0};
     for (int x = 0; x < nx; x++)
     {
       sum += v[y * nxp + x];
     }
-    double4_t mean = {
-        sum[0] / nx,
-        sum[1] / nx,
-        sum[2] / nx,
-        sum[3] / nx,
-    };
+    double d = 1.0 / nx;
+    double4_t div = {d, d, d, d};
+    double4_t mean = sum * div;
 
-    double4_t pow_sum;
+    double4_t pow_sum = {0.0, 0.0, 0.0, 0.0};
     for (int x = 0; x < nx; x++)
     {
       double4_t normalized = v[y * nxp + x] - mean;
@@ -78,11 +75,7 @@ void correlate(int ny, int nx, const float *data, float *result)
 
     for (int r = 0; r < y_slices; r++)
     {
-      int ydx = y * y_slices + r;
-      if (ydx < ny)
-      {
-        inv_nss[ydx] = 1.0 / sqrt(pow_sum[r]);
-      }
+      inv_nss[y * y_slices + r] = 1.0 / sqrt(pow_sum[r]);
     }
   }
 
