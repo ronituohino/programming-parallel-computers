@@ -25,34 +25,28 @@ void correlate(int ny, int nx, const float *data, float *result)
   int y_parts = (ny + y_slices - 1) / y_slices;
   int nyp = y_parts * y_slices;
 
-  // Padding to make result matrix width a multiple of 'x_slices'
-  constexpr int x_slices = 6;
-  int x_parts = (nx + x_slices - 1) / x_slices;
-  int nxp = x_parts * x_slices;
-
   // Vectorize matrix
-  vector<double4_t> v(nxp * y_parts);
-  vector<double> inv_nss(nyp, 0.0);
-#pragma omp parallel for
+  vector<double4_t> v(nx * y_parts);
+  vector<double> inv_nss(nyp);
   for (int y = 0; y < y_parts; y++)
   {
     double4_t sum = {0.0, 0.0, 0.0, 0.0};
 
-    for (int x = 0; x < nxp; x++)
+    for (int x = 0; x < nx; x++)
     {
       for (int s = 0; s < y_slices; s++)
       {
         if (y * y_slices + s < ny && x < nx)
         {
-          v[y * nxp + x][s] = data[(y * y_slices + s) * nx + x];
+          v[y * nx + x][s] = data[(y * y_slices + s) * nx + x];
         }
         else
         {
-          v[y * nxp + x][s] = 0.0;
+          v[y * nx + x][s] = 0.0;
         }
       }
 
-      sum += v[y * nxp + x];
+      sum += v[y * nx + x];
     }
 
     double d = 1.0 / nx;
@@ -62,8 +56,8 @@ void correlate(int ny, int nx, const float *data, float *result)
     double4_t pow_sum = {0.0, 0.0, 0.0, 0.0};
     for (int x = 0; x < nx; x++)
     {
-      double4_t normalized = v[y * nxp + x] - mean;
-      v[y * nxp + x] = normalized;
+      double4_t normalized = v[y * nx + x] - mean;
+      v[y * nx + x] = normalized;
       pow_sum += normalized * normalized;
     }
 
@@ -73,65 +67,57 @@ void correlate(int ny, int nx, const float *data, float *result)
     }
   }
 
+  vector<double> pr(nyp * nyp);
+
   // Calculate Pearson's correlation coefficient between all rows
-#pragma omp parallel for collapse(2)
   for (int i = 0; i < y_parts; i++)
   {
     for (int j = i; j < y_parts; j++)
     {
-      vector<double> sums(x_slices * 16);
+      vector<double4_t> sums(4);
 
-      for (int x = 0; x < nxp / x_slices; x++)
+      for (int x = 0; x < nx; x++)
       {
-        for (int k = 0; k < x_slices; k++)
-        {
-          double4_t a0 = v[i * nxp + (x * x_slices + k)];
-          double4_t b0 = v[j * nxp + (x * x_slices + k)];
+        double4_t a0 = v[i * nx + x];
+        double4_t b0 = v[j * nx + x];
 
-          double4_t a1 = swap1(a0);
-          double4_t b1 = swap2(b0);
+        double4_t a1 = swap1(a0);
+        double4_t b1 = swap2(b0);
 
-          double4_t a0b0 = a0 * b0;
-          double4_t a0b1 = a0 * b1;
-          double4_t a1b0 = a1 * b0;
-          double4_t a1b1 = a1 * b1;
-
-          sums[k + 0 * x_slices] += a0b0[0];
-          sums[k + 1 * x_slices] += a1b0[1];
-          sums[k + 2 * x_slices] += a0b1[0];
-          sums[k + 3 * x_slices] += a1b1[1];
-
-          sums[k + 4 * x_slices] += a1b0[0];
-          sums[k + 5 * x_slices] += a0b0[1];
-          sums[k + 6 * x_slices] += a1b1[0];
-          sums[k + 7 * x_slices] += a0b1[1];
-
-          sums[k + 8 * x_slices] += a0b1[2];
-          sums[k + 9 * x_slices] += a1b1[3];
-          sums[k + 10 * x_slices] += a0b0[2];
-          sums[k + 11 * x_slices] += a1b0[3];
-
-          sums[k + 12 * x_slices] += a1b1[2];
-          sums[k + 13 * x_slices] += a0b1[3];
-          sums[k + 14 * x_slices] += a1b0[2];
-          sums[k + 15 * x_slices] += a0b0[3];
-        }
+        sums[0] += a0 * b0; // a0b0
+        sums[1] += a0 * b1; // a0b1
+        sums[2] += a1 * b0; // a1b0
+        sums[3] += a1 * b1; // a1b1
       }
 
-      int is = i * y_slices;
-      int js = j * y_slices;
+      pr[((i * y_slices + 0) * ny) + (j * y_slices + 0)] = sums[0][0];
+      pr[((i * y_slices + 0) * ny) + (j * y_slices + 1)] = sums[2][1];
+      pr[((i * y_slices + 0) * ny) + (j * y_slices + 2)] = sums[1][0];
+      pr[((i * y_slices + 0) * ny) + (j * y_slices + 3)] = sums[3][1];
 
-      for (int n = 0; n < 16; n++)
-      {
-        int nx = n / 4;
-        int ns = n % 4;
+      pr[((i * y_slices + 1) * ny) + (j * y_slices + 0)] = sums[2][0];
+      pr[((i * y_slices + 1) * ny) + (j * y_slices + 1)] = sums[0][1];
+      pr[((i * y_slices + 1) * ny) + (j * y_slices + 2)] = sums[3][0];
+      pr[((i * y_slices + 1) * ny) + (j * y_slices + 3)] = sums[1][1];
 
-        if (js + ns < ny && is + nx < ny)
-        {
-          int idx = n * x_slices;
-          result[(js + ns) + ((is + nx) * ny)] = (sums[idx] + sums[idx + 1] + sums[idx + 2] + sums[idx + 3] + sums[idx + 4] + sums[idx + 5]) * (inv_nss[(is + nx)] * inv_nss[(js + ns)]);
-        }
-      }
+      pr[((i * y_slices + 2) * ny) + (j * y_slices + 0)] = sums[1][2];
+      pr[((i * y_slices + 2) * ny) + (j * y_slices + 1)] = sums[3][3];
+      pr[((i * y_slices + 2) * ny) + (j * y_slices + 2)] = sums[0][2];
+      pr[((i * y_slices + 2) * ny) + (j * y_slices + 3)] = sums[2][3];
+
+      pr[((i * y_slices + 3) * ny) + (j * y_slices + 0)] = sums[3][2];
+      pr[((i * y_slices + 3) * ny) + (j * y_slices + 1)] = sums[1][3];
+      pr[((i * y_slices + 3) * ny) + (j * y_slices + 2)] = sums[2][2];
+      pr[((i * y_slices + 3) * ny) + (j * y_slices + 3)] = sums[0][3];
+    }
+  }
+
+  for (int i = 0; i < ny; i++)
+  {
+    for (int j = 0; j < ny; j++)
+    {
+      // The inverse could be plucked out from here
+      result[i * ny + j] = pr[i * ny + j] * inv_nss[i] * inv_nss[j];
     }
   }
 }
