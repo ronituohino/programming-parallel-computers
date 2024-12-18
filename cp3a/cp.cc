@@ -8,7 +8,6 @@ This is the function you need to implement. Quick reference:
 */
 #include <cmath>
 #include <vector>
-#include <tuple>
 #include <iostream>
 #include <x86intrin.h>
 
@@ -39,18 +38,6 @@ void correlate(int ny, int nx, const float *data, float *result)
   constexpr int y_slices = 4;
   int y_parts = (ny + y_slices - 1) / y_slices;
   int nyp = y_parts * y_slices;
-
-  // Build a Z-order curve memory access pattern
-  std::vector<std::tuple<int, int, int>> rows(y_parts * y_parts);
-#pragma omp parallel for
-  for (int i = 0; i < y_parts; i++)
-  {
-    for (int j = 0; j < y_parts; j++)
-    {
-      int ij = _pdep_u32(i, 0x55555555) | _pdep_u32(j, 0xAAAAAAAA);
-      rows[i * y_parts + j] = make_tuple(ij, i, j);
-    }
-  }
 
   // Vectorize matrix
   vector<double4_t> v(nx * y_parts);
@@ -102,39 +89,32 @@ void correlate(int ny, int nx, const float *data, float *result)
     int stripe_end = stripe + min(nx - stripe, cols_per_stripe);
     // Calculate Pearson's correlation coefficient between all rows
 
-#pragma omp parallel for
-    for (int n = 0; n < y_parts * y_parts; n++)
+#pragma omp parallel for collapse(2)
+    for (int i = 0; i < y_parts; i++)
     {
-      // Get corresponding pair (x, y) for Z-order value
-      int ij, i, j;
-      std::tie(ij, i, j) = rows[n];
-      (void)ij;
-
-      if (i > j)
+      for (int j = i; j < y_parts; j++)
       {
-        continue;
+        vector<double4_t> sums(4);
+
+        for (int x = stripe; x < stripe_end; x++)
+        {
+          double4_t a0 = v[i * nx + x];
+          double4_t b0 = v[j * nx + x];
+
+          double4_t a1 = swap1(a0);
+          double4_t b1 = swap2(b0);
+
+          sums[0] += a0 * b0; // a0b0
+          sums[1] += a0 * b1; // a0b1
+          sums[2] += a1 * b0; // a1b0
+          sums[3] += a1 * b1; // a1b1
+        }
+
+        pr[(i * y_parts + j) * 4 + 0] += sums[0];
+        pr[(i * y_parts + j) * 4 + 1] += sums[1];
+        pr[(i * y_parts + j) * 4 + 2] += sums[2];
+        pr[(i * y_parts + j) * 4 + 3] += sums[3];
       }
-
-      vector<double4_t> sums(4);
-
-      for (int x = stripe; x < stripe_end; x++)
-      {
-        double4_t a0 = v[i * nx + x];
-        double4_t b0 = v[j * nx + x];
-
-        double4_t a1 = swap1(a0);
-        double4_t b1 = swap2(b0);
-
-        sums[0] += a0 * b0; // a0b0
-        sums[1] += a0 * b1; // a0b1
-        sums[2] += a1 * b0; // a1b0
-        sums[3] += a1 * b1; // a1b1
-      }
-
-      pr[(i * y_parts + j) * 4 + 0] += sums[0];
-      pr[(i * y_parts + j) * 4 + 1] += sums[1];
-      pr[(i * y_parts + j) * 4 + 2] += sums[2];
-      pr[(i * y_parts + j) * 4 + 3] += sums[3];
     }
   }
 
