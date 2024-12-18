@@ -32,6 +32,8 @@ constexpr int r[16] = {
 
 void correlate(int ny, int nx, const float *data, float *result)
 {
+  constexpr int cols_per_stripe = 500;
+
   // Padding to make result matrix height a multiple of 'y_slices'
   constexpr int y_slices = 4;
   int y_parts = (ny + y_slices - 1) / y_slices;
@@ -40,6 +42,8 @@ void correlate(int ny, int nx, const float *data, float *result)
   // Vectorize matrix
   vector<double4_t> v(nx * y_parts);
   vector<double> inv_nss(nyp);
+
+#pragma omp parallel for
   for (int y = 0; y < y_parts; y++)
   {
     double4_t sum = {0.0, 0.0, 0.0, 0.0};
@@ -79,45 +83,51 @@ void correlate(int ny, int nx, const float *data, float *result)
     }
   }
 
-  vector<double> pr(nyp * nyp);
-
-  // Calculate Pearson's correlation coefficient between all rows
-  for (int i = 0; i < y_parts; i++)
+  vector<double> pr(ny * ny);
+  for (int stripe = 0; stripe < nx; stripe += cols_per_stripe)
   {
-    for (int j = i; j < y_parts; j++)
+    int stripe_end = stripe + min(nx - stripe, cols_per_stripe);
+    // Calculate Pearson's correlation coefficient between all rows
+
+#pragma omp parallel for collapse(2)
+    for (int i = 0; i < y_parts; i++)
     {
-      vector<double4_t> sums(4);
-
-      for (int x = 0; x < nx; x++)
+      for (int j = i; j < y_parts; j++)
       {
-        double4_t a0 = v[i * nx + x];
-        double4_t b0 = v[j * nx + x];
+        vector<double4_t> sums(4);
 
-        double4_t a1 = swap1(a0);
-        double4_t b1 = swap2(b0);
-
-        sums[0] += a0 * b0; // a0b0
-        sums[1] += a0 * b1; // a0b1
-        sums[2] += a1 * b0; // a1b0
-        sums[3] += a1 * b1; // a1b1
-      }
-
-      int is = i * y_slices;
-      int js = j * y_slices;
-
-      for (int n = 0; n < 16; n++)
-      {
-        int nx = n / 4;
-        int ns = n % 4;
-
-        if (js + ns < ny && is + nx < ny)
+        for (int x = stripe; x < stripe_end; x++)
         {
-          pr[((is + nx) * ny) + (js + ns)] = sums[l[n]][r[n]];
+          double4_t a0 = v[i * nx + x];
+          double4_t b0 = v[j * nx + x];
+
+          double4_t a1 = swap1(a0);
+          double4_t b1 = swap2(b0);
+
+          sums[0] += a0 * b0; // a0b0
+          sums[1] += a0 * b1; // a0b1
+          sums[2] += a1 * b0; // a1b0
+          sums[3] += a1 * b1; // a1b1
+        }
+
+        int is = i * y_slices;
+        int js = j * y_slices;
+
+        for (int n = 0; n < 16; n++)
+        {
+          int nx = n / 4;
+          int ns = n % 4;
+
+          if (js + ns < ny && is + nx < ny)
+          {
+            pr[((is + nx) * ny) + (js + ns)] += sums[l[n]][r[n]];
+          }
         }
       }
     }
   }
 
+#pragma omp parallel for collapse(2)
   for (int i = 0; i < ny; i++)
   {
     for (int j = 0; j < ny; j++)
