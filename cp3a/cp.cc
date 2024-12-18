@@ -41,7 +41,7 @@ void correlate(int ny, int nx, const float *data, float *result)
 
   // Vectorize matrix
   vector<double4_t> v(nx * y_parts);
-  vector<double> inv_nss(nyp);
+  vector<double4_t> means(y_parts);
 
 #pragma omp parallel for
   for (int y = 0; y < y_parts; y++)
@@ -68,27 +68,30 @@ void correlate(int ny, int nx, const float *data, float *result)
     double d = 1.0 / nx;
     double4_t div = {d, d, d, d};
     double4_t mean = sum * div;
-
-    double4_t pow_sum = {0.0, 0.0, 0.0, 0.0};
-    for (int x = 0; x < nx; x++)
-    {
-      double4_t normalized = v[y * nx + x] - mean;
-      v[y * nx + x] = normalized;
-      pow_sum += normalized * normalized;
-    }
-
-    for (int r = 0; r < y_slices; r++)
-    {
-      inv_nss[y * y_slices + r] = 1.0 / sqrt(pow_sum[r]);
-    }
+    means[y] = mean;
   }
 
-  vector<double4_t> pr(y_parts * y_parts * 4);
+  vector<double4_t> pr(y_parts * y_parts * 4); // Partial results between stripes
+  vector<double4_t> d(nx * y_parts);           // Data that is handled in each stripe
+  vector<double4_t> pow_sums(y_parts);
+  vector<double> inv_nss(nyp);
+
   for (int stripe = 0; stripe < nx; stripe += cols_per_stripe)
   {
     int stripe_end = stripe + min(nx - stripe, cols_per_stripe);
-    // Calculate Pearson's correlation coefficient between all rows
 
+    // Load in data
+    for (int n = 0; n < y_parts; n++)
+    {
+      for (int x = stripe; x < stripe_end; x++)
+      {
+        double4_t norm = v[n * nx + x] - means[n];
+        d[n * nx + x] = norm;
+        pow_sums[n] += norm * norm;
+      }
+    };
+
+    // Calculate Pearson's correlation coefficient between all rows
 #pragma omp parallel for collapse(2)
     for (int i = 0; i < y_parts; i++)
     {
@@ -98,8 +101,8 @@ void correlate(int ny, int nx, const float *data, float *result)
 
         for (int x = stripe; x < stripe_end; x++)
         {
-          double4_t a0 = v[i * nx + x];
-          double4_t b0 = v[j * nx + x];
+          double4_t a0 = d[i * nx + x];
+          double4_t b0 = d[j * nx + x];
 
           double4_t a1 = swap1(a0);
           double4_t b1 = swap2(b0);
@@ -115,6 +118,14 @@ void correlate(int ny, int nx, const float *data, float *result)
         pr[(i * y_parts + j) * 4 + 2] += sums[2];
         pr[(i * y_parts + j) * 4 + 3] += sums[3];
       }
+    }
+  }
+
+  for (int n = 0; n < y_parts; n++)
+  {
+    for (int r = 0; r < y_slices; r++)
+    {
+      inv_nss[n * y_slices + r] = 1.0 / sqrt(pow_sums[n][r]);
     }
   }
 
