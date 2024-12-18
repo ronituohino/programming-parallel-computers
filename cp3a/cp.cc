@@ -71,23 +71,23 @@ void correlate(int ny, int nx, const float *data, float *result)
     means[y] = mean;
   }
 
-  vector<double4_t> pr(y_parts * y_parts * 4); // Partial results between stripes
-  vector<double4_t> d(nx * y_parts);           // Data that is handled in each stripe
+  vector<double4_t> pr(y_parts * y_parts * 4);    // Partial results between stripes
+  vector<double4_t> d(cols_per_stripe * y_parts); // Data that is handled in each stripe
   vector<double4_t> pow_sums(y_parts);
-  vector<double> inv_nss(nyp);
 
   for (int stripe = 0; stripe < nx; stripe += cols_per_stripe)
   {
-    int stripe_end = stripe + min(nx - stripe, cols_per_stripe);
+    int stripe_end = min(nx - stripe, cols_per_stripe);
 
-    // Load in data
-    for (int n = 0; n < y_parts; n++)
+// Load in data, and normalize
+#pragma omp parallel for
+    for (int y = 0; y < y_parts; y++)
     {
-      for (int x = stripe; x < stripe_end; x++)
+      for (int x = 0; x < stripe_end; x++)
       {
-        double4_t norm = v[n * nx + x] - means[n];
-        d[n * nx + x] = norm;
-        pow_sums[n] += norm * norm;
+        double4_t norm = v[y * nx + x + stripe] - means[y];
+        d[y * cols_per_stripe + x] = norm;
+        pow_sums[y] += norm * norm;
       }
     };
 
@@ -99,10 +99,10 @@ void correlate(int ny, int nx, const float *data, float *result)
       {
         vector<double4_t> sums(4);
 
-        for (int x = stripe; x < stripe_end; x++)
+        for (int x = 0; x < stripe_end; x++)
         {
-          double4_t a0 = d[i * nx + x];
-          double4_t b0 = d[j * nx + x];
+          double4_t a0 = d[i * cols_per_stripe + x];
+          double4_t b0 = d[j * cols_per_stripe + x];
 
           double4_t a1 = swap1(a0);
           double4_t b1 = swap2(b0);
@@ -121,6 +121,8 @@ void correlate(int ny, int nx, const float *data, float *result)
     }
   }
 
+  vector<double> inv_nss(nyp);
+#pragma omp parallel for
   for (int n = 0; n < y_parts; n++)
   {
     for (int r = 0; r < y_slices; r++)
