@@ -18,6 +18,18 @@ typedef double double4_t __attribute__((vector_size(4 * sizeof(double))));
 static inline double4_t swap1(double4_t x) { return double4_t{x[1], x[0], x[3], x[2]}; }
 static inline double4_t swap2(double4_t x) { return double4_t{x[2], x[3], x[0], x[1]}; }
 
+constexpr int l[16] = {
+    0, 2, 1, 3,
+    2, 0, 3, 1,
+    1, 3, 0, 2,
+    3, 1, 2, 0};
+
+constexpr int r[16] = {
+    0, 1, 0, 1,
+    0, 1, 0, 1,
+    2, 3, 2, 3,
+    2, 3, 2, 3};
+
 void correlate(int ny, int nx, const float *data, float *result)
 {
   // Padding to make result matrix height a multiple of 'y_slices'
@@ -90,25 +102,19 @@ void correlate(int ny, int nx, const float *data, float *result)
         sums[3] += a1 * b1; // a1b1
       }
 
-      pr[((i * y_slices + 0) * ny) + (j * y_slices + 0)] = sums[0][0];
-      pr[((i * y_slices + 0) * ny) + (j * y_slices + 1)] = sums[2][1];
-      pr[((i * y_slices + 0) * ny) + (j * y_slices + 2)] = sums[1][0];
-      pr[((i * y_slices + 0) * ny) + (j * y_slices + 3)] = sums[3][1];
+      int is = i * y_slices;
+      int js = j * y_slices;
 
-      pr[((i * y_slices + 1) * ny) + (j * y_slices + 0)] = sums[2][0];
-      pr[((i * y_slices + 1) * ny) + (j * y_slices + 1)] = sums[0][1];
-      pr[((i * y_slices + 1) * ny) + (j * y_slices + 2)] = sums[3][0];
-      pr[((i * y_slices + 1) * ny) + (j * y_slices + 3)] = sums[1][1];
+      for (int n = 0; n < 16; n++)
+      {
+        int nx = n / 4;
+        int ns = n % 4;
 
-      pr[((i * y_slices + 2) * ny) + (j * y_slices + 0)] = sums[1][2];
-      pr[((i * y_slices + 2) * ny) + (j * y_slices + 1)] = sums[3][3];
-      pr[((i * y_slices + 2) * ny) + (j * y_slices + 2)] = sums[0][2];
-      pr[((i * y_slices + 2) * ny) + (j * y_slices + 3)] = sums[2][3];
-
-      pr[((i * y_slices + 3) * ny) + (j * y_slices + 0)] = sums[3][2];
-      pr[((i * y_slices + 3) * ny) + (j * y_slices + 1)] = sums[1][3];
-      pr[((i * y_slices + 3) * ny) + (j * y_slices + 2)] = sums[2][2];
-      pr[((i * y_slices + 3) * ny) + (j * y_slices + 3)] = sums[0][3];
+        if (js + ns < ny && is + nx < ny)
+        {
+          pr[((is + nx) * ny) + (js + ns)] = sums[l[n]][r[n]];
+        }
+      }
     }
   }
 
