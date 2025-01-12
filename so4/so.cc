@@ -6,6 +6,8 @@ typedef unsigned long long data_t;
 
 using namespace std;
 
+// https://tarjotin.cs.aalto.fi/CS-A1140/2020/notes/par-mergesort.html
+// Parallelize this
 void merge(data_t *data, int left, int mid, int right)
 {
     int n1 = mid - left + 1;
@@ -83,14 +85,13 @@ void pms(data_t *data, int left, int right, int thresh)
 #pragma omp section
                 pms(data, mid + 1, right, thresh);
             }
+            merge(data, left, mid, right);
         }
-
-        merge(data, left, mid, right);
     }
 }
 
 void psort(int n, data_t *data)
 {
-    int thresh = 100000;
+    int thresh = 10000000;
     pms(data, 0, n - 1, thresh);
 }
