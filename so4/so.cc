@@ -6,92 +6,92 @@ typedef unsigned long long data_t;
 
 using namespace std;
 
-// https://tarjotin.cs.aalto.fi/CS-A1140/2020/notes/par-mergesort.html
-// Parallelize this
-void merge(data_t *data, int left, int mid, int right)
+int bin_search(data_t value, data_t *data, int start, int end)
 {
-    int n1 = mid - left + 1;
-    int n2 = right - mid;
-
-    data_t *leftBuff = (data_t *)malloc(n1 * sizeof(data_t));
-    data_t *rightBuff = (data_t *)malloc(n2 * sizeof(data_t));
-
-    for (int i = 0; i < n1; ++i)
+    int low = start;
+    int high = max(start, end + 1);
+    while (low < high)
     {
-        leftBuff[i] = data[left + i];
-    }
-    for (int i = 0; i < n2; ++i)
-    {
-        rightBuff[i] = data[mid + 1 + i];
-    }
-
-    // Merge the buffers back into the original data
-    int i = 0, j = 0, k = left;
-    while (i < n1 && j < n2)
-    {
-        if (leftBuff[i] <= rightBuff[j])
+        int mid = (low + high) / 2;
+        if (value <= data[mid])
         {
-            data[k] = leftBuff[i];
-            i++;
+            high = mid;
         }
         else
         {
-            data[k] = rightBuff[j];
-            j++;
+            low = mid + 1;
         }
-        k++;
     }
-
-    // Copy the remaining elements of leftBuff
-    while (i < n1)
-    {
-        data[k] = leftBuff[i];
-        i++;
-        k++;
-    }
-
-    // Copy the remaining elements of rightBuff
-    while (j < n2)
-    {
-        data[k] = rightBuff[j];
-        j++;
-        k++;
-    }
-
-    free(leftBuff);
-    free(rightBuff);
+    return high;
 }
 
-void pms(data_t *data, int left, int right, int thresh)
+void p_merge(data_t *data, int s1, int e1, int s2, int e2, data_t *buf, int s3)
 {
-    // Subsets with only 1 element are already "sorted"
-    if (left < right)
+    int l1 = e1 - s1;
+    int l2 = e2 - s2;
+
+    // Make sure left is larger or equal size to right
+    if (l1 < l2)
     {
-        int len = right - left;
-        int mid = left + len / 2;
+        int s3 = s1;
+        s1 = s2;
+        s2 = s3;
 
-        if (len < thresh)
+        int e3 = e1;
+        e1 = e2;
+        e2 = e3;
+
+        int l3 = l1;
+        l1 = l2;
+        l2 = l3;
+    }
+
+    if (l1 == 0)
+    {
+        return;
+    }
+    else
+    {
+        int m1 = s1 + l1 / 2;
+        int m2 = bin_search(data[m1], data, s2, e2);
+        int m3 = s3 + (m1 - s1) + (m2 - s2);
+        buf[m3] = data[m1];
+
+        p_merge(data, s1, m1 - 1, s2, m2 - 1, buf, s3);
+        p_merge(data, m1 + 1, e1, m2, e2, buf, m3 + 1);
+    }
+}
+
+void pm_sort(data_t *from, data_t *to, int s, int e, int thr, data_t *data)
+{
+    int l = e - s;
+    if (l < thr)
+    {
+        // For small subsets, use serial sort
+        if (data != to)
         {
-            // For small subsets, use serial sort
-            sort(data + left, data + right + 1);
-        }
-        else
-        {
-#pragma omp parallel sections
+            // copy
+            for (int i = s; i < e; i++)
             {
-#pragma omp section
-                pms(data, left, mid, thresh);
-
-#pragma omp section
-                pms(data, mid + 1, right, thresh);
+                to[i] = data[i];
             }
-            merge(data, left, mid, right);
         }
+        sort(to, to + l + 1);
+    }
+    else
+    {
+        int m = s + l / 2;
+        pm_sort(to, from, s, m, thr, data);
+        pm_sort(to, from, m + 1, e, thr, data);
+
+        p_merge(from, s, m, m + 1, e, to, s);
     }
 }
 
 void psort(int n, data_t *data)
 {
+    data_t *aux = (data_t *)malloc(n * sizeof(data_t));
     int thresh = 10000000;
-    pms(data, 0, n - 1, thresh);
+    pm_sort(aux, data, 0, n - 1, thresh, data);
+    free(aux);
 }
