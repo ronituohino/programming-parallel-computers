@@ -6,31 +6,6 @@ typedef unsigned long long data_t;
 
 using namespace std;
 
-/*
-void psort(int n, data_t *data)
-{
-    data_t *buffer = (data_t *)malloc(n * sizeof(data_t));
-    // cout << *(data + i) << " " << endl;
-    constexpr int vals_to_compute = 64; // even
-    int slots = n / vals_to_compute + 1;
-
-    // disassemble data into pairs, and sort them in place
-    for (int i = 0; i < slots; i++)
-    {
-        int start = i * vals_to_compute;
-        int end = min(start + vals_to_compute, n);
-
-        for (int v = 0; v < vals_to_compute; v += 2)
-        {
-            cout << i << " " << start << " " << end << endl;
-            sort(data + start, data + end);
-        }
-    }
-
-    free(buffer);
-}
-*/
-
 void merge(data_t *data, int left, int mid, int right)
 {
     int n1 = mid - left + 1;
