@@ -52,7 +52,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   vector<float8_t> v(nx * y_parts);
   vector<float8_t> means(y_parts);
 
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic, 1)
   for (int y = 0; y < y_parts; y++)
   {
     float8_t sum = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
@@ -89,7 +89,7 @@ void correlate(int ny, int nx, const float *data, float *result)
     int stripe_end = min(nx - stripe, cols_per_stripe);
 
 // Load in data, and normalize
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic, 1)
     for (int y = 0; y < y_parts; y++)
     {
       for (int x = 0; x < stripe_end; x++)
@@ -101,7 +101,7 @@ void correlate(int ny, int nx, const float *data, float *result)
     };
 
     // Calculate Pearson's correlation coefficient between all rows
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for schedule(dynamic, 1)
     for (int i = 0; i < y_parts; i++)
     {
       for (int j = i; j < y_parts; j++)
@@ -142,7 +142,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   }
 
   vector<float> inv_nss(nyp);
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic, 1)
   for (int n = 0; n < y_parts; n++)
   {
     for (int r = 0; r < y_slices; r++)
@@ -151,7 +151,7 @@ void correlate(int ny, int nx, const float *data, float *result)
     }
   }
 
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for schedule(dynamic, 1)
   for (int i = 0; i < y_parts; i++)
   {
     for (int j = i; j < y_parts; j++)
