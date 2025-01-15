@@ -101,6 +101,7 @@ void correlate(int ny, int nx, const float *data, float *result)
 
         for (int x = 0; x < stripe_end; x++)
         {
+          // Add ILP?
           double4_t a0 = d[i * cols_per_stripe + x];
           double4_t b0 = d[j * cols_per_stripe + x];
 
