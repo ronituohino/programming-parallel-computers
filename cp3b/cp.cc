@@ -106,7 +106,7 @@ void correlate(int ny, int nx, const float *data, float *result)
     {
       for (int j = i; j < y_parts; j++)
       {
-        vector<float8_t> sums(8);
+        float8_t sums[8] = {};
 
         for (int x = 0; x < stripe_end; x++)
         {

@@ -97,7 +97,7 @@ void correlate(int ny, int nx, const float *data, float *result)
     {
       for (int j = i; j < y_parts; j++)
       {
-        vector<double4_t> sums(4);
+        double4_t sums[4] = {};
 
         for (int x = 0; x < stripe_end; x++)
         {
