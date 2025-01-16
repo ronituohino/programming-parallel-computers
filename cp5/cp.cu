@@ -18,7 +18,12 @@ static inline int divup(int a, int b)
   return (a + b - 1) / b;
 }
 
-__global__ void compute_means_and_normalize(int ny, int nx, const float *data, float *normal, float *nss)
+static inline int roundup(int a, int b)
+{
+  return divup(a, b) * b;
+}
+
+__global__ void compute_means_and_normalize(int ny, int nx, int nyp, const float *data, float *trans, float *nss)
 {
   int y = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -38,24 +43,24 @@ __global__ void compute_means_and_normalize(int ny, int nx, const float *data, f
   for (int x = 0; x < nx; ++x)
   {
     float normalized = data[y * nx + x] - mean;
-    normal[y * nx + x] = normalized;
+    trans[x * nyp + y] = normalized;
     pow_sum += normalized * normalized;
   }
   nss[y] = sqrt(pow_sum);
 }
 
-__global__ void compute_correlations(int ny, int nx, const float *normal, const float *nss, float *result)
+__global__ void compute_correlations(int t_ny, int t_nx, const float *trans, const float *nss, float *par_res)
 {
+  // Fix dis
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   int j = threadIdx.y + blockIdx.y * blockDim.y;
 
-  if (i >= ny || j >= ny || j < i)
-    return;
+  int part = blockIdx.z;
 
   float sum = 0.0;
-  for (int n = 0; n < nx; n++)
+  for (int x = 0; x < nx; x++)
   {
-    sum += normal[i * nx + n] * normal[j * nx + n];
+    sum += trans[x * nyp + i] * trans[x * nyp + j];
   }
 
   result[j + i * ny] = sum / (nss[i] * nss[j]);
@@ -63,22 +68,27 @@ __global__ void compute_correlations(int ny, int nx, const float *normal, const 
 
 void correlate(int ny, int nx, const float *data, float *result)
 {
+  int nyp = roundup(ny, 4);
+
   // Allocate device memory
-  float *d_data, *d_normal, *d_nss, *d_result;
+  float *d_data, *d_normal, *d_nss, *d_par_res, *d_result;
 
   size_t data_size = ny * nx * sizeof(float);
-  size_t normal_size = ny * nx * sizeof(float);
-  size_t result_size = ny * ny * sizeof(float);
+  size_t trans_size = nyp * nx * sizeof(float);
   size_t nss_size = ny * sizeof(float);
+  size_t par_res_size = (nyp / 4) * nx * ny * sizeof(float);
+  size_t result_size = ny * ny * sizeof(float);
 
   CHECK(cudaMalloc((void **)&d_data, data_size));
-  CHECK(cudaMalloc((void **)&d_normal, normal_size));
+  CHECK(cudaMalloc((void **)&d_normal, trans_size));
   CHECK(cudaMalloc((void **)&d_nss, nss_size));
+  CHECK(cudaMalloc((void **)&d_par_res, par_res_size));
   CHECK(cudaMalloc((void **)&d_result, result_size));
 
   CHECK(cudaMemset(d_data, 0, data_size));
-  CHECK(cudaMemset(d_normal, 0, normal_size));
+  CHECK(cudaMemset(d_normal, 0, trans_size));
   CHECK(cudaMemset(d_nss, 0, nss_size));
+  CHECK(cudaMemset(d_par_res, 0, par_res_size));
   CHECK(cudaMemset(d_result, 0, result_size));
 
   // Copy input data to device
@@ -86,17 +96,20 @@ void correlate(int ny, int nx, const float *data, float *result)
 
   // Launch kernel to compute means and normalize data
   {
-    dim3 grid_dim(divup(ny, 8));
+    dim3 grid_dim(divup(nyp, 8));
     dim3 block_dim(8); // Make amount of threads a multiple of 32 (GPU warp size)
-    compute_means_and_normalize<<<grid_dim, block_dim>>>(ny, nx, d_data, d_normal, d_nss);
+    compute_means_and_normalize<<<grid_dim, block_dim>>>(ny, nx, nyp, d_data, d_normal, d_nss);
     CHECK(cudaGetLastError());
   }
 
+  int t_nx = nyp;
+  int t_ny = nx;
+
   // Launch kernel to compute correlations
   {
-    dim3 grid_dim(divup(ny, 8), divup(ny, 8), 1);
+    dim3 grid_dim(divup(t_ny, 8), divup(t_ny, 8), t_nx / 4);
     dim3 block_dim(8, 8, 1); // Make amount of threads a multiple of 32 (GPU warp size)
-    compute_correlations<<<grid_dim, block_dim>>>(ny, nx, d_normal, d_nss, d_result);
+    compute_correlations<<<grid_dim, block_dim>>>(t_ny, t_nx, d_normal, d_nss, d_par_res);
     CHECK(cudaGetLastError());
   }
 
