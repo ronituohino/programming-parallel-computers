@@ -47,20 +47,16 @@ __global__ void compute_means_and_normalize(int ny, int nx, int nyp, int nxp, co
 
 __global__ void compute_correlations(int ny, int nx, int nyp, int nxp, int y_parts, int x_parts, const float *norm, float *par_res)
 {
-  int x0 = blockIdx.x;
+  int x0 = blockIdx.x * blockDim.x + threadIdx.x;
   int y0 = blockIdx.y;
   int y1 = blockIdx.z;
 
-  if (y1 < y0)
+  if (y1 < y0 || x0 >= x_parts)
   {
     return;
   }
 
-  float sums[16] = {
-      0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0};
+  float sums[16] = {0.0};
 
   for (int x = 0; x < nxp / x_parts; x++)
   {
@@ -82,7 +78,7 @@ __global__ void compute_correlations(int ny, int nx, int nyp, int nxp, int y_par
   }
 
   // Write out sums to partial results
-  int addr = (x0 * y_parts * y_parts * 16) + (y0 * y_parts + y1) * 16;
+  int addr = (x0 * nyp * nyp) + (y0 * y_parts + y1) * 16;
   for (int n = 0; n < 16; n++)
   {
     par_res[addr + n] = sums[n];
@@ -91,23 +87,19 @@ __global__ void compute_correlations(int ny, int nx, int nyp, int nxp, int y_par
 
 __global__ void compute_sums(int ny, int nx, int nyp, int nxp, int y_parts, int x_parts, const float *par_res, const float *nss, float *result)
 {
-  int y0 = blockIdx.y;
-  int y1 = blockIdx.z;
+  int y0 = blockIdx.x * blockDim.x + threadIdx.x;
+  int y1 = blockIdx.y * blockDim.y + threadIdx.y;
 
-  if (y1 < y0)
+  if (y1 < y0 || y0 >= y_parts || y1 >= y_parts)
   {
     return;
   }
 
-  float sums[16] = {
-      0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0};
+  float sums[16] = {0.0};
 
   for (int x0 = 0; x0 < x_parts; x0++)
   {
-    int addr = (x0 * y_parts * y_parts * 16) + (y0 * y_parts + y1) * 16;
+    int addr = (x0 * nyp * nyp) + (y0 * y_parts + y1) * 16;
 
     // Fetch all values from partial results and calulate total sum for these rows
     for (int n = 0; n < 16; n++)
@@ -136,8 +128,8 @@ void correlate(int ny, int nx, const float *data, float *result)
   int y_parts = divup(ny, 4);
   int nyp = y_parts * 4;
 
-  int x_parts = divup(nx, 4);
-  int nxp = x_parts * 4;
+  int x_parts = divup(nx, 512);
+  int nxp = x_parts * 512;
 
   // Allocate device memory
   float *d_data, *d_norm, *d_nss, *d_par_res, *d_result;
@@ -145,7 +137,7 @@ void correlate(int ny, int nx, const float *data, float *result)
   size_t data_size = ny * nx * sizeof(float);
   size_t norm_size = nyp * nxp * sizeof(float);
   size_t nss_size = ny * sizeof(float);
-  size_t par_res_size = x_parts * y_parts * y_parts * 16 * sizeof(float);
+  size_t par_res_size = x_parts * nyp * nyp * sizeof(float);
   size_t result_size = ny * ny * sizeof(float);
 
   CHECK(cudaMalloc((void **)&d_data, data_size));
@@ -173,16 +165,16 @@ void correlate(int ny, int nx, const float *data, float *result)
 
   // Launch kernel to compute correlations
   {
-    dim3 grid(x_parts, y_parts, y_parts);
-    dim3 block(1);
+    dim3 grid(divup(x_parts, 8), y_parts, y_parts);
+    dim3 block(8);
     compute_correlations<<<grid, block>>>(ny, nx, nyp, nxp, y_parts, x_parts, d_norm, d_par_res);
     CHECK(cudaGetLastError());
   }
 
   // Launch kernel to compute final sums
   {
-    dim3 grid(1, y_parts, y_parts);
-    dim3 block(1);
+    dim3 grid(divup(y_parts, 8), divup(y_parts, 8));
+    dim3 block(8, 8);
     compute_sums<<<grid, block>>>(ny, nx, nyp, nxp, y_parts, x_parts, d_par_res, d_nss, d_result);
     CHECK(cudaGetLastError());
   }
