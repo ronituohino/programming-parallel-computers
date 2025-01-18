@@ -82,7 +82,7 @@ void llm(LLamaConfig config, LLamaParameters params, const std::vector<token_t> 
 
 void matmul(float *out, const float *x, const float *w, int n, int d)
 {
-#pragma omp parallel for schedule(dynamic, 1)
+#pragma omp parallel for
     for (int i = 0; i < d; i++)
     {
         // uses doubles to ensure numerical stability.
