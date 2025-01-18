@@ -86,7 +86,7 @@ void p_merge(data_t *data, int s1, int e1, int s2, int e2, data_t *buf, int s3)
         l2 = l3;
     }
 
-    if (l1 < 10000000)
+    if (l1 < 1000000)
     {
         s_merge(data, s1, e1, s2, e2, buf, s3);
     }
@@ -98,11 +98,11 @@ void p_merge(data_t *data, int s1, int e1, int s2, int e2, data_t *buf, int s3)
 
         buf[m3] = data[m1];
 
-#pragma omp parallel sections
+#pragma omp taskgroup
         {
-#pragma omp section
+#pragma omp task
             p_merge(data, s1, m1 - 1, s2, m2 - 1, buf, s3);
-#pragma omp section
+#pragma omp task
             p_merge(data, m1 + 1, e1, m2, e2, buf, m3 + 1);
         }
     }
@@ -111,7 +111,7 @@ void p_merge(data_t *data, int s1, int e1, int s2, int e2, data_t *buf, int s3)
 void pm_sort(data_t *from, data_t *to, int s, int e, data_t *data)
 {
     int l = e - s;
-    if (l < 10000000)
+    if (l < 1000000)
     {
         // For small subsets, use serial sort
         if (data != to)
@@ -128,11 +128,11 @@ void pm_sort(data_t *from, data_t *to, int s, int e, data_t *data)
     {
         int m = s + l / 2;
 
-#pragma omp parallel sections
+#pragma omp taskgroup
         {
-#pragma omp section
+#pragma omp task
             pm_sort(to, from, s, m, data);
-#pragma omp section
+#pragma omp task
             pm_sort(to, from, m + 1, e, data);
         }
 
@@ -143,6 +143,10 @@ void pm_sort(data_t *from, data_t *to, int s, int e, data_t *data)
 void psort(int n, data_t *data)
 {
     data_t *aux = (data_t *)malloc(n * sizeof(data_t));
-    pm_sort(aux, data, 0, n - 1, data);
+#pragma omp parallel
+#pragma omp single
+    {
+        pm_sort(aux, data, 0, n - 1, data);
+    }
     free(aux);
 }
