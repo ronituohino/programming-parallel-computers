@@ -19,7 +19,7 @@ static inline int divup(int a, int b)
   return (a + b - 1) / b;
 }
 
-__global__ void compute_means_and_normalize(int ny, int nx, const float *data, float *norm, float *nss)
+__global__ void compute_means_and_normalize(int ny, int nx, int nyp, int nxp, const float *data, float *norm, float *nss)
 {
   int y = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -29,26 +29,25 @@ __global__ void compute_means_and_normalize(int ny, int nx, const float *data, f
   }
 
   float sum = 0.0;
-  for (int x = 0; x < nx; ++x)
+  for (int x = 0; x < nx; x++)
   {
     sum += data[y * nx + x];
   }
   float mean = sum / nx;
 
   float pow_sum = 0.0;
-  for (int x = 0; x < nx; ++x)
+  for (int x = 0; x < nx; x++)
   {
     float normalized = data[y * nx + x] - mean;
-    norm[y * nx + x] = normalized;
+    norm[y * nxp + x] = normalized;
     pow_sum += normalized * normalized;
   }
-  nss[y] = sqrt(pow_sum);
+  nss[y] = 1.0 / sqrt(pow_sum);
 }
 
-__global__ void compute_correlations(int ny, int nx, int y_parts, int x_parts, const float *norm, float *par_res)
+__global__ void compute_correlations(int ny, int nx, int nyp, int nxp, int y_parts, int x_parts, const float *norm, float *par_res)
 {
   int x0 = blockIdx.x;
-
   int y0 = blockIdx.y;
   int y1 = blockIdx.z;
 
@@ -63,23 +62,22 @@ __global__ void compute_correlations(int ny, int nx, int y_parts, int x_parts, c
       0.0, 0.0, 0.0, 0.0,
       0.0, 0.0, 0.0, 0.0};
 
-  // Calculate x number of columns
-  int thread_x_amount = 4;
-  for (int x = 0; x < thread_x_amount; x++)
+  for (int x = 0; x < nxp / x_parts; x++)
   {
-    // Multiply every column num with every other column num, and store in sums
     for (int n = 0; n < 16; n++)
     {
-      int nx = n / 4;
-      int ns = n % 4;
+      int nx_idx = n / 4;
+      int ns_idx = n % 4;
 
-      int i = y0 * 4 + nx;
-      int j = y1 * 4 + ns;
+      int i = y0 * 4 + nx_idx;
+      int j = y1 * 4 + ns_idx;
 
-      float a = norm[i * nx + x0 * thread_x_amount + x];
-      float b = norm[j * nx + x0 * thread_x_amount + x];
-
-      sums[n] += a * b;
+      if (i < ny && j < ny && (x + x0 * (nxp / x_parts)) < nx)
+      {
+        float a = norm[i * nxp + x + x0 * (nxp / x_parts)];
+        float b = norm[j * nxp + x + x0 * (nxp / x_parts)];
+        sums[n] += a * b;
+      }
     }
   }
 
@@ -91,7 +89,7 @@ __global__ void compute_correlations(int ny, int nx, int y_parts, int x_parts, c
   }
 }
 
-__global__ void compute_sums(int ny, int nx, int y_parts, int x_parts, const float *par_res, const float *nss, float *result)
+__global__ void compute_sums(int ny, int nx, int nyp, int nxp, int y_parts, int x_parts, const float *par_res, const float *nss, float *result)
 {
   int y0 = blockIdx.y;
   int y1 = blockIdx.z;
@@ -120,15 +118,15 @@ __global__ void compute_sums(int ny, int nx, int y_parts, int x_parts, const flo
 
   for (int n = 0; n < 16; n++)
   {
-    int nx = n / 4;
-    int ns = n % 4;
+    int nx_idx = n / 4;
+    int ns_idx = n % 4;
 
-    int i = y0 * 4 + nx;
-    int j = y1 * 4 + ns;
+    int i = y0 * 4 + nx_idx;
+    int j = y1 * 4 + ns_idx;
 
     if (i < ny && j < ny)
     {
-      result[i * ny + j] = sums[n] * nss[i] * nss[j];
+      result[i * ny + j] = sums[n] * (nss[i] * nss[j]);
     }
   }
 }
@@ -167,25 +165,25 @@ void correlate(int ny, int nx, const float *data, float *result)
 
   // Launch kernel to compute means and normalize data
   {
-    dim3 grid_dim(divup(nyp, 8));
-    dim3 block_dim(8);
-    compute_means_and_normalize<<<grid_dim, block_dim>>>(ny, nx, d_data, d_norm, d_nss);
+    dim3 grid(divup(nyp, 8));
+    dim3 block(8);
+    compute_means_and_normalize<<<grid, block>>>(ny, nx, nyp, nxp, d_data, d_norm, d_nss);
     CHECK(cudaGetLastError());
   }
 
   // Launch kernel to compute correlations
   {
-    dim3 grid_dim(1, y_parts, y_parts);
-    dim3 block_dim(1, 1, 1);
-    compute_correlations<<<grid_dim, block_dim>>>(ny, nx, y_parts, x_parts, d_norm, d_par_res);
+    dim3 grid(x_parts, y_parts, y_parts);
+    dim3 block(1);
+    compute_correlations<<<grid, block>>>(ny, nx, nyp, nxp, y_parts, x_parts, d_norm, d_par_res);
     CHECK(cudaGetLastError());
   }
 
   // Launch kernel to compute final sums
   {
-    dim3 grid_dim(x_parts, y_parts, y_parts);
-    dim3 block_dim(1, 1, 1);
-    compute_sums<<<grid_dim, block_dim>>>(ny, nx, y_parts, x_parts, d_par_res, d_nss, d_result);
+    dim3 grid(1, y_parts, y_parts);
+    dim3 block(1);
+    compute_sums<<<grid, block>>>(ny, nx, nyp, nxp, y_parts, x_parts, d_par_res, d_nss, d_result);
     CHECK(cudaGetLastError());
   }
 
@@ -196,5 +194,6 @@ void correlate(int ny, int nx, const float *data, float *result)
   CHECK(cudaFree(d_data));
   CHECK(cudaFree(d_norm));
   CHECK(cudaFree(d_nss));
+  CHECK(cudaFree(d_par_res));
   CHECK(cudaFree(d_result));
 }
