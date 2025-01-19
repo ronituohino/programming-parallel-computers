@@ -118,19 +118,13 @@ Result segment(int ny, int nx, const float *data)
                     double4_t sq_sum_for_rect = get_rect_sum(sq_sums_of_pixels, nx, x0, x1, y0, y1);
 
                     double4_t sum_for_out = sum_for_img - sum_for_rect;
-
-                    double4_t av_rect = sum_for_rect / v_rect_dim;
-                    double4_t two_av_rect = av_rect + av_rect;
-                    double4_t pow_av_rect = av_rect * av_rect;
-
-                    double4_t av_out = sum_for_out / v_out_dim;
-                    double4_t two_av_out = av_out + av_out;
-                    double4_t pow_av_out = av_out * av_out;
-
                     double4_t sq_sum_for_out = sq_sum_for_img - sq_sum_for_rect;
 
-                    double4_t error1 = sq_sum_for_rect - (two_av_rect * sum_for_rect) + (v_rect_dim * pow_av_rect);
-                    double4_t error2 = sq_sum_for_out - (two_av_out * sum_for_out) + (v_out_dim * pow_av_out);
+                    double4_t av_rect = sum_for_rect / v_rect_dim;
+                    double4_t av_out = sum_for_out / v_out_dim;
+
+                    double4_t error1 = sq_sum_for_rect - ((av_rect + av_rect) * sum_for_rect) + (v_rect_dim * (av_rect * av_rect));
+                    double4_t error2 = sq_sum_for_out - ((av_out + av_out) * sum_for_out) + (v_out_dim * (av_out * av_out));
 
                     double4_t cost_v = error1 + error2;
                     double cost = cost_v[0] + cost_v[1] + cost_v[2];
