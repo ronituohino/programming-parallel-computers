@@ -18,6 +18,11 @@ static inline int divup(int a, int b)
   return (a + b - 1) / b;
 }
 
+inline int static roundup(int a, int b)
+{
+  return divup(a, b) * b;
+}
+
 __global__ void compute_means_and_normalize(int ny, int nx, const float *data, float *normal, float *nss)
 {
   int y = blockIdx.x * blockDim.x + threadIdx.x;
@@ -38,7 +43,7 @@ __global__ void compute_means_and_normalize(int ny, int nx, const float *data, f
   for (int x = 0; x < nx; x++)
   {
     float normalized = data[y * nx + x] - mean;
-    normal[y * nx + x] = normalized;
+    normal[x * ny + y] = normalized;
     pow_sum += normalized * normalized;
   }
   nss[y] = 1.0 / sqrt(pow_sum);
@@ -46,64 +51,57 @@ __global__ void compute_means_and_normalize(int ny, int nx, const float *data, f
 
 __global__ void compute_correlations(int ny, int nx, const float *normal, const float *nss, float *result)
 {
-  int i_dx = blockIdx.x * blockDim.x + threadIdx.x;
-  int j_dx = blockIdx.y * blockDim.y + threadIdx.y;
+  int ia = threadIdx.x;
+  int ja = threadIdx.y;
+  int ic = blockIdx.x;
+  int jc = blockIdx.y;
 
-  if (j_dx < i_dx)
+  float sums[8][8] = {0};
+  for (int k = 0; k < nx; k++)
   {
-    return;
-  }
+    float x[8];
+    float y[8];
 
-  int is = i_dx * 8;
-  int js = j_dx * 8;
-
-  float sums[64] = {0.0};
-  for (int x = 0; x < nx; x++)
-  {
-    for (int ii = 0; ii < 8; ii++)
+    for (int ijb = 0; ijb < 8; ijb++)
     {
-      for (int jj = 0; jj < 8; jj++)
+      int i = ic * 64 + ijb * 8 + ia;
+      int j = jc * 64 + ijb * 8 + ja;
+      x[ijb] = normal[ny * k + i];
+      y[ijb] = normal[ny * k + j];
+    }
+
+    for (int ib = 0; ib < 8; ib++)
+    {
+      for (int jb = 0; jb < 8; jb++)
       {
-        int i = (is + ii);
-        int j = (js + jj);
-
-        if (i >= ny || j >= ny || j < i)
-        {
-          continue;
-        }
-
-        sums[ii * 8 + jj] += normal[i * nx + x] * normal[j * nx + x];
+        sums[ib][jb] += x[ib] * y[jb];
       }
     }
   }
 
-  for (int ii = 0; ii < 8; ii++)
+  for (int ib = 0; ib < 8; ib++)
   {
-    for (int jj = 0; jj < 8; jj++)
+    for (int jb = 0; jb < 8; jb++)
     {
-      int i = (is + ii);
-      int j = (js + jj);
-
-      if (i >= ny || j >= ny || j < i)
+      int i = ic * 64 + ib * 8 + ia;
+      int j = jc * 64 + jb * 8 + ja;
+      if (i < ny && j < ny)
       {
-        continue;
+        result[i + j * ny] = sums[ib][jb] * (nss[i] * nss[j]);
       }
-
-      result[i * ny + j] = sums[ii * 8 + jj] * (nss[i] * nss[j]);
     }
   }
 }
 
 void correlate(int ny, int nx, const float *data, float *result)
 {
-  int y_parts = divup(ny, 8);
-  int nyp = y_parts * 8;
+  int nn = roundup(ny, 64);
 
   // Allocate device memory
   float *d_data, *d_normal, *d_nss, *d_result;
 
   size_t data_size = ny * nx * sizeof(float);
-  size_t normal_size = nyp * nx * sizeof(float);
+  size_t normal_size = nn * nx * sizeof(float);
   size_t result_size = ny * ny * sizeof(float);
   size_t nss_size = ny * sizeof(float);
 
@@ -130,7 +128,7 @@ void correlate(int ny, int nx, const float *data, float *result)
 
   // Launch kernel to compute correlations
   {
-    dim3 grid_dim(divup(y_parts, 8), divup(y_parts, 8));
+    dim3 grid_dim(nn / 64, nn / 64);
     dim3 block_dim(8, 8);
     compute_correlations<<<grid_dim, block_dim>>>(ny, nx, d_normal, d_nss, d_result);
     CHECK(cudaGetLastError());
