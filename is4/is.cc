@@ -16,6 +16,16 @@ using namespace std;
 
 typedef double double4_t __attribute__((vector_size(4 * sizeof(double))));
 
+struct Result_V
+{
+    int y0;
+    int x0;
+    int y1;
+    int x1;
+    double4_t outer;
+    double4_t inner;
+};
+
 constexpr double4_t empt = double4_t{0.0, 0.0, 0.0, 0.0};
 
 double4_t get_rect_sum(vector<double4_t> const &table, int nx, int x0, int x1, int y0, int y1)
@@ -44,15 +54,12 @@ Result segment(int ny, int nx, const float *data)
     {
         for (int x = 0; x < nx; x++)
         {
-            double4_t v;
-            double4_t p;
+            double4_t v = {0.0, 0.0, 0.0, 0.0};
             for (int c = 0; c < 3; c++)
             {
                 double d = data[c + 3 * x + 3 * nx * y];
                 v[c] = d;
-                p[c] = pow(d, 2);
             }
-            v[3] = 0.0;
 
             if (x > 0)
             {
@@ -66,14 +73,15 @@ Result segment(int ny, int nx, const float *data)
             {
                 v -= sums_of_pixels[(x - 1) + nx * (y - 1)];
             }
+
             sums_of_pixels[x + nx * y] = v;
-            sq_sums_of_pixels[x + nx * y] = p;
+            sq_sums_of_pixels[x + nx * y] = v * v;
         }
     }
 
     // Get sum and sq_sum for entire image
-    double4_t sum_for_img = sums_of_pixels[(ny - 1) * (nx - 1)];
-    double4_t sq_sum_for_img = sq_sums_of_pixels[(ny - 1) * (nx - 1)];
+    double4_t sum_for_img = sums_of_pixels[(ny - 1) * nx + (nx - 1)];
+    double4_t sq_sum_for_img = sq_sums_of_pixels[(ny - 1) * nx + (nx - 1)];
     int img_dim = nx * ny;
 
     Result min;
@@ -85,7 +93,7 @@ Result segment(int ny, int nx, const float *data)
 #pragma omp parallel for schedule(dynamic, 1)
     for (int h = ny; h > 0; h--)
     {
-        Result local_min;
+        Result_V local_min = {};
         double local_min_cost = numeric_limits<double>::infinity();
 
         for (int w = nx; w > 0; w--)
@@ -112,24 +120,20 @@ Result segment(int ny, int nx, const float *data)
                     double4_t sum_for_out = sum_for_img - sum_for_rect;
 
                     double4_t av_rect = sum_for_rect / v_rect_dim;
-                    double4_t two_av_rect = {av_rect[0] * 2, av_rect[1] * 2, av_rect[2] * 2, av_rect[3] * 2};
-                    double4_t pow_av_rect = {pow(av_rect[0], 2), pow(av_rect[1], 2), pow(av_rect[2], 2), 0.0};
+                    double4_t two_av_rect = av_rect + av_rect;
+                    double4_t pow_av_rect = av_rect * av_rect;
 
                     double4_t av_out = sum_for_out / v_out_dim;
-                    double4_t two_av_out = {av_out[0] * 2, av_out[1] * 2, av_out[2] * 2, av_out[3] * 2};
-                    double4_t pow_av_out = {pow(av_out[0], 2), pow(av_out[1], 2), pow(av_out[2], 2), 0.0};
+                    double4_t two_av_out = av_out + av_out;
+                    double4_t pow_av_out = av_out * av_out;
 
                     double4_t sq_sum_for_out = sq_sum_for_img - sq_sum_for_rect;
 
-                    double4_t error1 = sq_sum_for_rect - two_av_rect * sum_for_rect + v_rect_dim * pow_av_rect;
-                    double4_t error2 = sq_sum_for_out - two_av_out * sum_for_out + v_out_dim * pow_av_out;
+                    double4_t error1 = sq_sum_for_rect - (two_av_rect * sum_for_rect) + (v_rect_dim * pow_av_rect);
+                    double4_t error2 = sq_sum_for_out - (two_av_out * sum_for_out) + (v_out_dim * pow_av_out);
 
-                    double cost = 0.0;
-                    for (int i = 0; i < 3; i++)
-                    {
-                        cost += error1[i];
-                        cost += error2[i];
-                    }
+                    double4_t cost_v = error1 + error2;
+                    double cost = cost_v[0] + cost_v[1] + cost_v[2];
 
                     if (cost < local_min_cost)
                     {
@@ -139,12 +143,8 @@ Result segment(int ny, int nx, const float *data)
                             x0,
                             y1,
                             x1,
-                            {(float)(sum_for_out[0] / out_dim),
-                             (float)(sum_for_out[1] / out_dim),
-                             (float)(sum_for_out[2] / out_dim)},
-                            {(float)(sum_for_rect[0] / rect_dim),
-                             (float)(sum_for_rect[1] / rect_dim),
-                             (float)(sum_for_rect[2] / rect_dim)}};
+                            av_out,
+                            av_rect};
                     }
                 }
             }
@@ -155,7 +155,14 @@ Result segment(int ny, int nx, const float *data)
             if (local_min_cost < min_cost)
             {
                 min_cost = local_min_cost;
-                min = local_min;
+                min = {
+                    local_min.y0,
+                    local_min.x0,
+                    local_min.y1,
+                    local_min.x1,
+                    {(float)local_min.outer[0], (float)local_min.outer[1], (float)local_min.outer[2]},
+                    {(float)local_min.inner[0], (float)local_min.inner[1], (float)local_min.inner[2]},
+                };
             }
         }
     }
